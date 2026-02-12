@@ -14,6 +14,7 @@ import os
 import shutil
 import subprocess
 import re
+import hashlib
 from datetime import datetime
 from collections import deque
 
@@ -39,6 +40,8 @@ session_bridge_started = False
 core_monitor_started = False
 recent_user_agent = deque(maxlen=250)
 recent_agent_agent = deque(maxlen=250)
+interaction_seen_order = deque(maxlen=4000)
+interaction_seen_set = set()
 cron_details_by_agent = {}
 cron_summary = {
     'active_jobs': 0,
@@ -759,6 +762,20 @@ def build_agent_timeline(snapshot):
             'text': str(row.get('text', ''))[:500],
         })
 
+    deduped = []
+    seen = set()
+    for item in timeline:
+        key = (
+            str(item.get('source', '')).strip().lower(),
+            str(item.get('type', '')).strip().lower(),
+            str(item.get('text', '')).strip().lower(),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(item)
+    timeline = deduped
+
     timeline.sort(key=lambda item: parse_any_ts(item.get('ts')), reverse=True)
     return timeline
 
@@ -1056,6 +1073,22 @@ def parse_message_actor(message):
     return 'system', clean
 
 
+def remember_interaction_key(key):
+    """Remember an interaction key in a bounded dedupe cache.
+    Returns True when key is new and should be accepted.
+    """
+    if not key:
+        return False
+    if key in interaction_seen_set:
+        return False
+    if len(interaction_seen_order) >= interaction_seen_order.maxlen:
+        oldest = interaction_seen_order.popleft()
+        interaction_seen_set.discard(oldest)
+    interaction_seen_order.append(key)
+    interaction_seen_set.add(key)
+    return True
+
+
 def detect_agent_mentions(text, source_agent):
     """Detect known agent mentions in text for agent-to-agent interaction inference."""
     if not isinstance(text, str):
@@ -1080,24 +1113,29 @@ def push_interaction(event):
 
     for message in messages[-2:]:
         actor, text = parse_message_actor(str(message))
+        text_clamped = text[:420]
         mentions = detect_agent_mentions(text, agent)
         row = {
             'ts': event.get('last_seen') or utc_now_iso(),
             'agent': agent,
             'actor': actor,
-            'text': text[:420],
+            'text': text_clamped,
             'mentions': mentions,
         }
         if actor == 'user':
-            recent_user_agent.appendleft(row)
+            key = f"ua|{normalize_agent_name(agent)}|{actor}|{text_clamped.strip().lower()}"
+            if remember_interaction_key(key):
+                recent_user_agent.appendleft(row)
         elif actor in {'assistant', 'system'} and mentions:
             for target in mentions:
-                recent_agent_agent.appendleft({
-                    'ts': row['ts'],
-                    'source': agent,
-                    'target': target,
-                    'text': row['text'],
-                })
+                key = f"aa|{normalize_agent_name(agent)}|{normalize_agent_name(target)}|{text_clamped.strip().lower()}"
+                if remember_interaction_key(key):
+                    recent_agent_agent.appendleft({
+                        'ts': row['ts'],
+                        'source': agent,
+                        'target': target,
+                        'text': row['text'],
+                    })
 
 
 def build_cron_details(payloads):
@@ -1488,6 +1526,25 @@ def extract_session_event(agent_name, entry):  # pragma: no cover
     }
 
 
+def session_entry_dedupe_key(entry):  # pragma: no cover
+    """Compute a stable dedupe key for session entries.
+    Uses native id when available, otherwise hashes timestamp+role+content.
+    """
+    if not isinstance(entry, dict):
+        return ''
+    entry_id = entry.get('id')
+    if entry_id:
+        return f"id:{entry_id}"
+    message = entry.get('message') if isinstance(entry.get('message'), dict) else {}
+    payload = {
+        'timestamp': entry.get('timestamp') or '',
+        'role': message.get('role') or '',
+        'content': message.get('content') or [],
+    }
+    raw = json.dumps(payload, sort_keys=True, ensure_ascii=False)
+    return f"hash:{hashlib.sha1(raw.encode('utf-8')).hexdigest()}"
+
+
 def list_agent_session_files():  # pragma: no cover
     """Find latest session JSONL file per agent."""
     files = {}
@@ -1549,14 +1606,14 @@ def bridge_sessions_to_bus():  # pragma: no cover
                 if previous is None or previous.get('path') != file_path:
                     bootstrap_entries = load_last_session_lines(file_path, max_entries=4)
                     for entry in bootstrap_entries:
-                        entry_id = entry.get('id')
-                        if entry_id and entry_id in seen_ids:
+                        entry_key = session_entry_dedupe_key(entry)
+                        if entry_key and entry_key in seen_ids:
                             continue
                         event = extract_session_event(agent_name, entry)
                         if event:
                             append_event_to_bus(event)
-                        if entry_id:
-                            seen_ids.add(entry_id)
+                        if entry_key:
+                            seen_ids.add(entry_key)
                     file_offsets[agent_name] = {
                         'path': file_path,
                         'offset': os.path.getsize(file_path),
@@ -1579,14 +1636,14 @@ def bridge_sessions_to_bus():  # pragma: no cover
                                 entry = json.loads(raw)
                             except Exception:
                                 continue
-                            entry_id = entry.get('id')
-                            if entry_id and entry_id in seen_ids:
+                            entry_key = session_entry_dedupe_key(entry)
+                            if entry_key and entry_key in seen_ids:
                                 continue
                             event = extract_session_event(agent_name, entry)
                             if event:
                                 append_event_to_bus(event)
-                            if entry_id:
-                                seen_ids.add(entry_id)
+                            if entry_key:
+                                seen_ids.add(entry_key)
                         file_offsets[agent_name]['offset'] = sf.tell()
 
             if len(seen_ids) > 5000:
@@ -1726,8 +1783,16 @@ def tail_bus(path):  # pragma: no cover
                             try:
                                 entry = json.loads(hline.strip())
                                 if entry.get('type') == 'message':
+                                    text = str(entry.get('text') or '').strip()
+                                    recent = normalized['message_history'][-40:]
+                                    if text and any(str(e.get('text') or '').strip() == text for e in recent):
+                                        continue
                                     normalized['message_history'].append(entry)
                                 elif entry.get('type') == 'thought':
+                                    text = str(entry.get('text') or '').strip()
+                                    recent = normalized['thought_history'][-40:]
+                                    if text and any(str(e.get('text') or '').strip() == text for e in recent):
+                                        continue
                                     normalized['thought_history'].append(entry)
                             except Exception:
                                 continue
@@ -1787,6 +1852,9 @@ def tail_bus(path):  # pragma: no cover
                 # append recent messages/thoughts from event (if present)
                 for m in event.get('recent_messages', []):
                     entry = {'type': 'message', 'ts': event.get('ts') or time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()), 'text': m}
+                    text = str(m or '').strip()
+                    if text and any(str(e.get('text') or '').strip() == text for e in mh[-40:]):
+                        continue
                     mh.append(entry)
                     # persist
                     try:
@@ -1798,6 +1866,9 @@ def tail_bus(path):  # pragma: no cover
                         pass
                 for t in event.get('recent_thoughts', []):
                     entry = {'type': 'thought', 'ts': event.get('ts') or time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()), 'text': t}
+                    text = str(t or '').strip()
+                    if text and any(str(e.get('text') or '').strip() == text for e in th[-40:]):
+                        continue
                     th.append(entry)
                     try:
                         os.makedirs(HISTORY_DIR, exist_ok=True)
