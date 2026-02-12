@@ -1,0 +1,2361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenClaw Swarm Observatory</title>
+    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github-dark.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.6/purify.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
+    <style>
+        :root {
+            --bg: #0b1020;
+            --panel: #121a30;
+            --panel-soft: #17233e;
+            --text: #e8eefc;
+            --muted: #a9b7d9;
+            --good: #16c784;
+            --warn: #f59e0b;
+            --bad: #ef4444;
+            --border: #2a3758;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background: linear-gradient(180deg, #090f1f 0%, #0b1020 100%);
+            color: var(--text);
+        }
+        header {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            backdrop-filter: blur(6px);
+            background: rgba(11, 16, 32, 0.94);
+            border-bottom: 1px solid var(--border);
+            padding: 14px 18px;
+        }
+        .title-line {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+        }
+        .title-line h1 { margin: 0; font-size: 1.15rem; }
+        .meta { color: var(--muted); font-size: .85rem; }
+        .meta-actions { display: flex; align-items: center; gap: 8px; }
+        .header-link {
+            border: 1px solid var(--border);
+            background: #111a31;
+            color: #d8e4ff;
+            border-radius: 8px;
+            padding: 5px 10px;
+            font-size: .78rem;
+            cursor: pointer;
+        }
+        .header-link:hover { border-color: #4b6192; }
+        .overview {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 10px;
+            margin-top: 12px;
+        }
+        .kpi {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 9px;
+            cursor: pointer;
+            transition: border-color .14s ease, transform .14s ease, box-shadow .14s ease;
+        }
+        .kpi:hover {
+            border-color: #5b8cff;
+            transform: translateY(-1px);
+            box-shadow: 0 8px 18px rgba(8, 15, 30, .28);
+        }
+        .kpi:focus-visible {
+            outline: 2px solid #5b8cff;
+            outline-offset: 2px;
+        }
+        .kpi .label {
+            color: var(--muted);
+            font-size: .76rem;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .kpi .value { font-size: 1.2rem; font-weight: 700; margin-top: 4px; }
+
+        .layout {
+            display: grid;
+            grid-template-columns: minmax(720px, 2fr) minmax(480px, 1.2fr);
+            gap: 14px;
+            padding: 14px;
+            align-items: start;
+        }
+        .panel {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 12px;
+            margin-bottom: 12px;
+        }
+        .panel h2 { margin: 0 0 10px; font-size: .97rem; }
+        .title-with-help { display: flex; align-items: center; gap: 6px; }
+        .help-btn {
+            border: 1px solid var(--border);
+            background: #111a31;
+            color: var(--muted);
+            border-radius: 999px;
+            width: 18px;
+            height: 18px;
+            line-height: 16px;
+            text-align: center;
+            padding: 0;
+            font-size: .72rem;
+            cursor: pointer;
+        }
+        .help-btn:hover { color: #fff; border-color: #5b8cff; }
+        .help-btn.micro {
+            width: 16px;
+            height: 16px;
+            line-height: 14px;
+            font-size: .65rem;
+        }
+        .panel h3 {
+            margin: 0 0 8px;
+            font-size: .82rem;
+            text-transform: uppercase;
+            letter-spacing: .4px;
+            color: var(--muted);
+        }
+
+        #agent-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 10px;
+        }
+        .agent-card {
+            background: var(--panel-soft);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 10px;
+            cursor: pointer;
+            transition: transform .12s ease, border-color .12s ease;
+        }
+        .agent-card:hover { transform: translateY(-1px); border-color: #4b6192; }
+        .agent-card.selected { border-color: #5b8cff; box-shadow: inset 0 0 0 1px rgba(91,140,255,.35); }
+        .agent-top { display:flex; justify-content:space-between; align-items:center; }
+        .chip {
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            font-size: .72rem;
+            padding: 2px 7px;
+            color: var(--muted);
+        }
+        .chip.live { color: var(--good); border-color: rgba(22,199,132,.4); }
+        .chip.bad { color: var(--bad); border-color: rgba(239,68,68,.45); }
+        .kv { margin: 5px 0; font-size: .82rem; color: #c7d4f6; }
+        .muted { color: var(--muted); }
+        .agent-badge {
+            --agent-accent: #6ea8ff;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            border: 1px solid color-mix(in srgb, var(--agent-accent) 52%, transparent);
+            background: color-mix(in srgb, var(--agent-accent) 16%, #101a32);
+            color: #eaf1ff;
+            border-radius: 999px;
+            padding: 2px 8px;
+            font-size: .74rem;
+            line-height: 1;
+            font-weight: 600;
+            white-space: nowrap;
+            vertical-align: middle;
+        }
+        .agent-badge::before {
+            content: '';
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: var(--agent-accent);
+            box-shadow: 0 0 8px color-mix(in srgb, var(--agent-accent) 60%, transparent);
+        }
+        .agent-badge.compact {
+            font-size: .69rem;
+            padding: 2px 7px;
+            gap: 5px;
+        }
+        .agent-badge.nav-action {
+            cursor: pointer;
+        }
+        .agent-badge.nav-action:hover {
+            filter: brightness(1.08);
+        }
+        .agent-badge.nav-action:focus-visible {
+            outline: 2px solid #5b8cff;
+            outline-offset: 2px;
+        }
+
+        .selection-hint {
+            border: 1px dashed #3a4a73;
+            border-radius: 8px;
+            color: #c6d3f4;
+            padding: 9px;
+            margin-bottom: 10px;
+            font-size: .84rem;
+            background: rgba(21,31,56,.5);
+        }
+
+        .mini-chart-controls {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+        .mini-chart-label {
+            color: #a9b7d9;
+            font-size: .74rem;
+        }
+        .mini-chart-toggle {
+            border: 1px solid #3f5483;
+            background: #13203c;
+            color: #cfe0ff;
+            border-radius: 999px;
+            padding: 3px 9px;
+            font-size: .72rem;
+            cursor: pointer;
+        }
+        .mini-chart-toggle.active {
+            border-color: #5b8cff;
+            background: #1a2d56;
+            color: #ffffff;
+        }
+        .telemetry-check {
+            margin: -4px 0 10px;
+            font-size: .73rem;
+            color: #a9b7d9;
+        }
+        .telemetry-check.warn {
+            color: #f7c56a;
+        }
+        .telemetry-check.bad {
+            color: #ff9797;
+        }
+
+        .mini-metrics {
+            margin-top: 7px;
+            padding-top: 6px;
+            border-top: 1px dashed rgba(255,255,255,.12);
+            display: grid;
+            gap: 8px;
+            grid-template-columns: 1fr 1fr;
+        }
+        .mini-metric {
+            display: block;
+            min-width: 0;
+        }
+        .mini-metric-label {
+            color: #a9b7d9;
+            font-size: .69rem;
+            letter-spacing: .2px;
+            text-transform: uppercase;
+            margin-bottom: 3px;
+        }
+        .mini-canvas {
+            width: 100%;
+            height: 34px;
+            border-radius: 6px;
+            border: 1px solid rgba(255,255,255,.08);
+            background: linear-gradient(180deg, rgba(18,30,56,.6), rgba(12,22,41,.86));
+        }
+        .mini-metric-value {
+            color: #d7e5ff;
+            font-size: .7rem;
+            text-align: right;
+        }
+        @media (max-width: 1020px) {
+            .mini-metrics {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .list {
+            max-height: 260px;
+            overflow: auto;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: #0f1830;
+        }
+        .row {
+            padding: 8px 9px;
+            border-bottom: 1px solid rgba(255,255,255,.06);
+            font-size: .81rem;
+        }
+        .row:last-child { border-bottom: none; }
+        .when { color: var(--muted); font-size: .74rem; }
+
+        .investigation { position: sticky; top: 96px; }
+        .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+        .tab {
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            padding: 4px 9px;
+            color: var(--muted);
+            background: #111a31;
+            cursor: pointer;
+            font-size: .75rem;
+        }
+        .tab.active { color: #fff; border-color: #5b8cff; background: #1a2d56; }
+        .tab-context-help {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            margin: 0 0 10px;
+            padding: 6px 8px;
+            border-left: 2px solid rgba(91, 140, 255, .45);
+            background: rgba(15, 27, 50, .38);
+            border-radius: 6px;
+        }
+        .tab-context-text {
+            color: #a9b7d9;
+            font-size: .74rem;
+            line-height: 1.3;
+        }
+        .tab-context-help .help-btn {
+            border-style: dashed;
+            background: transparent;
+            width: 17px;
+            height: 17px;
+            line-height: 15px;
+            font-size: .66rem;
+            color: #9cb2e5;
+            flex: 0 0 auto;
+        }
+
+        .trace {
+            max-height: 68vh;
+            overflow: auto;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: #0f1830;
+            padding: 8px;
+        }
+        .trace-item {
+            border: 1px solid rgba(255,255,255,.08);
+            border-radius: 8px;
+            background: #111a31;
+            padding: 8px;
+            margin-bottom: 8px;
+            font-size: .81rem;
+        }
+        .trace-item.linked {
+            border-color: #5b8cff;
+            box-shadow: inset 0 0 0 1px rgba(91,140,255,.32);
+            background: #16284d;
+        }
+        .backlink-banner {
+            border: 1px solid rgba(91,140,255,.45);
+            border-radius: 8px;
+            background: rgba(91,140,255,.12);
+            padding: 8px;
+            margin-bottom: 8px;
+            font-size: .79rem;
+            color: #d9e6ff;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .graph-wrap {
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: #0f1830;
+            padding: 8px;
+            overflow: auto;
+            max-height: 68vh;
+        }
+        .graph-stage {
+            min-height: 420px;
+            overflow: hidden;
+            border: 1px solid rgba(255,255,255,.08);
+            border-radius: 8px;
+            background: #0d172d;
+            cursor: grab;
+        }
+        .graph-stage.dragging { cursor: grabbing; }
+        .graph-node-text { font-size: 11px; fill: #e8eefc; }
+        .graph-edge-text { font-size: 10px; fill: #a9b7d9; }
+
+        .pill {
+            display: inline-block;
+            border: 1px solid rgba(255,255,255,.18);
+            border-radius: 999px;
+            padding: 1px 7px;
+            margin-right: 6px;
+            font-size: .71rem;
+            color: var(--muted);
+        }
+        .status-ok { color: var(--good); }
+        .status-bad { color: var(--bad); }
+        .status-warn { color: var(--warn); }
+        .small { font-size: .75rem; }
+        .investigation-breadcrumb {
+            border: 1px dashed rgba(255,255,255,.2);
+            border-radius: 8px;
+            background: rgba(16, 26, 50, .48);
+            color: #cfdcff;
+            padding: 6px 8px;
+            margin: 7px 0 10px;
+            font-size: .74rem;
+            line-height: 1.4;
+        }
+        .investigation-breadcrumb .sep {
+            color: #8aa2da;
+            margin: 0 5px;
+        }
+        .investigation-breadcrumb .crumb-strong {
+            color: #ecf3ff;
+            font-weight: 600;
+        }
+        .crumb-btn {
+            border: 1px solid rgba(255,255,255,.18);
+            background: rgba(17, 26, 49, .72);
+            color: #dbe8ff;
+            border-radius: 999px;
+            padding: 2px 8px;
+            font-size: .72rem;
+            cursor: pointer;
+        }
+        .crumb-btn:hover {
+            border-color: #5b8cff;
+            color: #fff;
+        }
+        .crumb-btn.active {
+            border-color: #5b8cff;
+            background: #1a2d56;
+            color: #fff;
+        }
+
+        .docs-modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(5, 10, 20, .76);
+            z-index: 25;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+        }
+        .docs-modal.open { display: flex; }
+        .docs-card {
+            width: min(1100px, 96vw);
+            height: min(78vh, 820px);
+            background: #0f1830;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            display: grid;
+            grid-template-columns: 280px 1fr;
+            overflow: hidden;
+        }
+        .docs-menu {
+            border-right: 1px solid var(--border);
+            background: #101a32;
+            overflow: auto;
+            padding: 10px;
+        }
+        .docs-menu-empty {
+            color: var(--muted);
+            font-size: .79rem;
+            padding: 8px;
+            border: 1px dashed rgba(255,255,255,.18);
+            border-radius: 8px;
+        }
+        .docs-tree-group {
+            margin-bottom: 10px;
+            border: 1px solid rgba(255,255,255,.08);
+            border-radius: 8px;
+            background: rgba(18, 31, 60, .55);
+            overflow: hidden;
+        }
+        .docs-menu-btn {
+            width: 100%;
+            text-align: left;
+            border: 1px solid rgba(255,255,255,.08);
+            background: #13203c;
+            color: #d9e5ff;
+            border-radius: 8px;
+            padding: 7px 8px;
+            margin-bottom: 7px;
+            font-size: .79rem;
+            cursor: pointer;
+        }
+        .docs-menu-btn.main {
+            margin: 0;
+            border: 0;
+            border-bottom: 1px solid rgba(255,255,255,.08);
+            border-radius: 0;
+            background: #13203c;
+            font-weight: 600;
+            font-size: .8rem;
+        }
+        .docs-menu-btn.sub {
+            margin: 0;
+            border: 0;
+            border-radius: 0;
+            background: transparent;
+            color: #c7d7ff;
+            padding: 6px 8px 6px 20px;
+            font-size: .76rem;
+        }
+        .docs-subtree {
+            display: grid;
+            gap: 0;
+            padding: 2px 0;
+            background: rgba(14, 23, 42, .5);
+        }
+        .docs-menu-btn.active { border-color: #5b8cff; background: #1a2d56; }
+        .docs-view {
+            display: grid;
+            grid-template-rows: auto 1fr;
+            min-height: 0;
+        }
+        .docs-topbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--border);
+        }
+        .docs-content {
+            padding: 12px;
+            overflow: auto;
+            font-size: .84rem;
+            line-height: 1.58;
+            color: #dbe7ff;
+        }
+        .docs-content h1,
+        .docs-content h2,
+        .docs-content h3 {
+            color: #e8efff;
+            margin: 1.1em 0 .45em;
+            line-height: 1.3;
+        }
+        .docs-content h1 { font-size: 1.24rem; border-bottom: 1px solid rgba(255,255,255,.12); padding-bottom: .24em; }
+        .docs-content h2 { font-size: 1.05rem; }
+        .docs-content h3 { font-size: .95rem; }
+        .docs-content p,
+        .docs-content li {
+            color: #dbe7ff;
+        }
+        .docs-content a {
+            color: #8db0ff;
+        }
+        .docs-content blockquote {
+            margin: .8em 0;
+            padding: .45em .8em;
+            border-left: 3px solid #5b8cff;
+            background: rgba(91,140,255,.08);
+            color: #d2e2ff;
+        }
+        .docs-content code {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            font-size: .78rem;
+            background: rgba(255,255,255,.08);
+            border-radius: 5px;
+            padding: .08em .35em;
+        }
+        .docs-content pre {
+            margin: .8em 0;
+            border: 1px solid rgba(255,255,255,.13);
+            border-radius: 8px;
+            overflow: auto;
+            background: #0b1327;
+        }
+        .docs-content pre code {
+            display: block;
+            background: transparent;
+            padding: 12px;
+            font-size: .76rem;
+            line-height: 1.45;
+            border-radius: 0;
+        }
+        .docs-anchor-target {
+            scroll-margin-top: 14px;
+        }
+
+        .overview-modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(5, 10, 20, .76);
+            z-index: 24;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+        }
+        .overview-modal.open { display: flex; }
+        .overview-card {
+            width: min(980px, 96vw);
+            height: min(76vh, 760px);
+            background: #0f1830;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+            display: grid;
+            grid-template-rows: auto 1fr;
+        }
+        .overview-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--border);
+            background: #101a32;
+        }
+        .overview-body {
+            padding: 12px;
+            overflow: auto;
+        }
+        .overview-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+        }
+        .overview-grid.deep {
+            grid-template-columns: 280px 1fr;
+            align-items: start;
+        }
+        .overview-detail {
+            border: 1px solid rgba(255,255,255,.1);
+            border-radius: 8px;
+            background: #111a31;
+            padding: 9px;
+            font-size: .8rem;
+        }
+        .overview-agent-list {
+            display: grid;
+            gap: 7px;
+            max-height: 56vh;
+            overflow: auto;
+        }
+        .overview-agent-btn {
+            width: 100%;
+            text-align: left;
+            border: 1px solid rgba(255,255,255,.12);
+            background: #13203c;
+            color: #d8e4ff;
+            border-radius: 8px;
+            padding: 8px;
+            cursor: pointer;
+            font-size: .78rem;
+        }
+        .overview-agent-btn.active {
+            border-color: #5b8cff;
+            background: #1a2d56;
+        }
+        .overview-subline {
+            color: #aac0f3;
+            font-size: .72rem;
+            margin-top: 4px;
+        }
+        .overview-deep-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+            flex-wrap: wrap;
+        }
+        .overview-cta {
+            border: 1px solid #4b6192;
+            background: #13203c;
+            color: #d8e4ff;
+            border-radius: 7px;
+            padding: 5px 9px;
+            font-size: .74rem;
+            cursor: pointer;
+        }
+        .overview-cta:hover { border-color: #5b8cff; }
+        .overview-decision-list {
+            display: grid;
+            gap: 6px;
+            margin: 0;
+            padding: 0;
+            list-style: none;
+        }
+        .overview-decision-item {
+            border: 1px solid rgba(255,255,255,.1);
+            border-radius: 8px;
+            background: rgba(14, 23, 44, .56);
+            padding: 7px;
+        }
+        .overview-decision-meta {
+            color: #b3c6f4;
+            font-size: .72rem;
+            margin-bottom: 4px;
+        }
+        .overview-decision-text {
+            color: #e2ecff;
+            font-size: .78rem;
+            line-height: 1.45;
+            margin-bottom: 6px;
+        }
+        .overview-detail h4 {
+            margin: 0 0 7px;
+            font-size: .8rem;
+            color: #d8e4ff;
+            text-transform: uppercase;
+            letter-spacing: .35px;
+        }
+        .overview-lines {
+            margin: 0;
+            padding-left: 16px;
+            line-height: 1.5;
+            color: #d4e2ff;
+        }
+        .overview-lines li { margin-bottom: 5px; }
+
+        @media (max-width: 1380px) {
+            .layout { grid-template-columns: 1fr; }
+            .investigation { position: static; }
+            .trace { max-height: 52vh; }
+            .overview-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="title-line">
+            <h1 class="title-with-help">OpenClaw Swarm Observatory
+                <button class="help-btn" data-doc="06-strategic-operations-playbook.md" data-doc-anchor="06-strategic-operations-playbook.md-dashboard-objective" title="What this software is for">?</button>
+            </h1>
+            <div class="meta-actions">
+                <button class="header-link" id="open-docs-index" title="Open documentation index">Docs index</button>
+                <div class="meta" id="last-refresh">refresh: --</div>
+            </div>
+        </div>
+        <div class="overview">
+            <div class="kpi" data-overview="agents" role="button" tabindex="0"><div class="label">Observed agents <button class="help-btn micro" data-doc="03-ui-ux-guide.md" data-doc-anchor="03-ui-ux-guide.md-header-and-kpi-strip" title="Meaning of this KPI">?</button></div><div class="value" id="kpi-agents">0</div></div>
+            <div class="kpi" data-overview="cron" role="button" tabindex="0"><div class="label">Active cron jobs <button class="help-btn micro" data-doc="03-ui-ux-guide.md" data-doc-anchor="03-ui-ux-guide.md-cron-timeline-tab" title="Meaning of this KPI">?</button></div><div class="value" id="kpi-cron">0</div></div>
+            <div class="kpi" data-overview="user_agent" role="button" tabindex="0"><div class="label">User→agent interactions <button class="help-btn micro" data-doc="03-ui-ux-guide.md" data-doc-anchor="03-ui-ux-guide.md-user-to-agent-stream" title="Meaning of this KPI">?</button></div><div class="value" id="kpi-ua">0</div></div>
+            <div class="kpi" data-overview="agent_agent" role="button" tabindex="0"><div class="label">Agent→agent interactions <button class="help-btn micro" data-doc="03-ui-ux-guide.md" data-doc-anchor="03-ui-ux-guide.md-agent-to-agent-stream" title="Meaning of this KPI">?</button></div><div class="value" id="kpi-aa">0</div></div>
+            <div class="kpi" data-overview="interrupted" role="button" tabindex="0"><div class="label">Non-ok/interrupted tasks <button class="help-btn micro" data-doc="03-ui-ux-guide.md" data-doc-anchor="03-ui-ux-guide.md-strategic-usage-patterns" title="Meaning of this KPI">?</button></div><div class="value" id="kpi-bad">0</div></div>
+        </div>
+    </header>
+
+    <main class="layout">
+        <section>
+            <article class="panel">
+                <h2 class="title-with-help">Swarm Overview (click to enter deep drilldown)
+                    <button class="help-btn" data-doc="03-ui-ux-guide.md" data-doc-anchor="03-ui-ux-guide.md-swarm-overview-section" title="Open section guide">?</button>
+                </h2>
+                <div id="selection-hint" class="selection-hint">1) Select an agent to unlock deep investigation and causal graph analysis.</div>
+                <div class="mini-chart-controls" id="mini-chart-controls">
+                    <span class="mini-chart-label">Mini charts mode:</span>
+                    <button class="mini-chart-toggle" id="mini-chart-line" data-chart-mode="line">Line</button>
+                    <button class="mini-chart-toggle" id="mini-chart-bars" data-chart-mode="bars">Bars</button>
+                </div>
+                <div id="telemetry-check" class="telemetry-check">Telemetry check: waiting for agent metrics…</div>
+                <div id="agent-grid"></div>
+            </article>
+            <article class="panel">
+                <h2 class="title-with-help">Global streams
+                    <button class="help-btn" data-doc="03-ui-ux-guide.md" data-doc-anchor="03-ui-ux-guide.md-global-streams-section" title="Open section guide">?</button>
+                </h2>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                    <div>
+                        <h3 class="title-with-help">User ↔ Agent
+                            <button class="help-btn micro" data-doc="03-ui-ux-guide.md" data-doc-anchor="03-ui-ux-guide.md-user-to-agent-stream" title="Open stream guide">?</button>
+                        </h3>
+                        <div id="user-agent-list" class="list"></div>
+                    </div>
+                    <div>
+                        <h3 class="title-with-help">Agent ↔ Agent
+                            <button class="help-btn micro" data-doc="03-ui-ux-guide.md" data-doc-anchor="03-ui-ux-guide.md-agent-to-agent-stream" title="Open stream guide">?</button>
+                        </h3>
+                        <div id="agent-agent-list" class="list"></div>
+                    </div>
+                </div>
+            </article>
+        </section>
+
+        <section class="investigation panel">
+            <h2 id="drill-title" class="title-with-help">Deep investigation (select an agent)
+                <button class="help-btn" data-doc="03-ui-ux-guide.md" data-doc-anchor="03-ui-ux-guide.md-investigation-console-section" title="Open section guide">?</button>
+            </h2>
+            <div class="small muted" id="selected-agent-label">Current agent: none</div>
+            <div id="investigation-breadcrumb" class="investigation-breadcrumb">Path: Swarm</div>
+            <div class="tabs">
+                <button class="tab active" data-tab="decisions">Why decisions</button>
+                <button class="tab" data-tab="soul">SOUL/file derivation</button>
+                <button class="tab" data-tab="graph">Causal Graph</button>
+                <button class="tab" data-tab="cron_timeline">Cron timeline</button>
+                <button class="tab" data-tab="timeline">Full timeline</button>
+                <button class="tab" data-tab="overview">Overview</button>
+            </div>
+            <div class="tab-context-help">
+                <div class="tab-context-text" id="active-tab-help-text">Active tab guide: Why decisions.</div>
+                <button class="help-btn micro" id="active-tab-help" data-doc="03-ui-ux-guide.md" data-doc-anchor="03-ui-ux-guide.md-why-decisions-tab" title="Open active tab guide">?</button>
+            </div>
+            <div id="drill-body" class="trace">Click an agent to open decision core analysis.</div>
+        </section>
+    </main>
+
+    <div id="docs-modal" class="docs-modal" aria-hidden="true">
+        <div class="docs-card" role="dialog" aria-modal="true" aria-label="Documentation">
+            <aside id="docs-menu" class="docs-menu"></aside>
+            <section class="docs-view">
+                <div class="docs-topbar">
+                    <strong id="docs-title">Documentation</strong>
+                    <button class="header-link" id="close-docs">Close</button>
+                </div>
+                <div id="docs-content" class="docs-content">Loading documentation…</div>
+            </section>
+        </div>
+    </div>
+
+    <div id="overview-modal" class="overview-modal" aria-hidden="true">
+        <div class="overview-card" role="dialog" aria-modal="true" aria-label="Overview Deep Detail">
+            <div class="overview-head">
+                <strong id="overview-title">Overview detail</strong>
+                <button class="header-link" id="close-overview">Close</button>
+            </div>
+            <div class="overview-body" id="overview-content">Loading details…</div>
+        </div>
+    </div>
+
+    <script>
+        // Centralized frontend state. Keeps selected agent, active tab, graph viewport and latest payloads.
+        const store = {
+            agents: new Map(),
+            insights: null,
+            selectedAgent: null,
+            drilldown: null,
+            activeTab: 'decisions',
+            graphViewport: { scale: 1, tx: 0, ty: 0 },
+            graphInteractionTs: 0,
+            nodeDetails: null,
+            docsIndex: [],
+            docsCurrent: null,
+            docsCurrentAnchor: null,
+            docsCatalog: [],
+            docsPayloadByName: {},
+            overviewCurrent: null,
+            overviewSelectedAgent: null,
+            overviewDeepByAgent: {},
+            overviewBacklink: null,
+            agentTelemetryHistory: {},
+            telemetryChartMode: localStorage.getItem('miniChartMode') === 'bars' ? 'bars' : 'line',
+        };
+
+        // Escape helper for safe HTML interpolation.
+        function esc(value) {
+            const s = String(value ?? '');
+            return s.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
+        }
+
+        function agentColor(name) {
+            const key = String(name || '').trim().toLowerCase();
+            const fixed = {
+                europa: '#5b8cff',
+                roma: '#f59e0b',
+                mercurio: '#16c784',
+                elara: '#c084fc',
+            };
+            if (fixed[key]) return fixed[key];
+
+            let hash = 0;
+            for (let i = 0; i < key.length; i += 1) {
+                hash = ((hash << 5) - hash) + key.charCodeAt(i);
+                hash |= 0;
+            }
+            const hue = Math.abs(hash) % 360;
+            return `hsl(${hue} 74% 62%)`;
+        }
+
+        function agentBadge(name, compact = false) {
+            const label = String(name || 'unknown').trim() || 'unknown';
+            const color = agentColor(label);
+            const compactClass = compact ? 'compact' : '';
+            return `<span class="agent-badge ${compactClass}" style="--agent-accent:${esc(color)};">${esc(label)}</span>`;
+        }
+
+        function safeDomKey(value) {
+            return String(value || 'unknown').toLowerCase().replace(/[^a-z0-9_-]+/g, '-');
+        }
+
+        function parseMemoryMb(rawValue) {
+            if (rawValue == null) return null;
+            if (typeof rawValue === 'number' && Number.isFinite(rawValue)) return rawValue;
+            const text = String(rawValue).trim();
+            if (!text) return null;
+            const match = text.match(/([0-9]+(?:\.[0-9]+)?)\s*(kb|mb|gb|b)?/i);
+            if (!match) return null;
+            const val = Number(match[1]);
+            const unit = String(match[2] || 'mb').toLowerCase();
+            if (!Number.isFinite(val)) return null;
+            if (unit === 'gb') return val * 1024;
+            if (unit === 'kb') return val / 1024;
+            if (unit === 'b') return val / (1024 * 1024);
+            return val;
+        }
+
+        function extractMemoryMb(item) {
+            const candidates = [
+                item?.mem,
+                item?.memory,
+                item?.raw_core?.mem,
+                item?.raw_core?.memory,
+                item?.raw_core?.rss,
+                item?.raw?.mem,
+                item?.raw?.memory,
+                item?.raw?.rss,
+            ];
+            for (const rawValue of candidates) {
+                const parsed = parseMemoryMb(rawValue);
+                if (Number.isFinite(parsed)) return parsed;
+            }
+            const hostMem = Number(store.insights?.resource_probe?.ram_used_mb);
+            if (Number.isFinite(hostMem)) return hostMem;
+            return null;
+        }
+
+        function parseTokenCount(item) {
+            const rawCore = item?.raw_core || {};
+            const raw = item?.raw || {};
+
+            const directCandidates = [
+                rawCore.totalTokens,
+                rawCore.total_tokens,
+                raw.totalTokens,
+                raw.total_tokens,
+                rawCore?.usage?.totalTokens,
+                rawCore?.usage?.total_tokens,
+                raw?.usage?.totalTokens,
+                raw?.usage?.total_tokens,
+            ];
+            for (const direct of directCandidates) {
+                const n = Number(direct);
+                if (Number.isFinite(n)) return n;
+            }
+
+            const messages = Array.isArray(item?.recent_messages) ? item.recent_messages : [];
+            for (const msg of messages) {
+                const m = String(msg || '').match(/tokens\s*[=:]\s*([0-9]+)/i);
+                if (m) return Number(m[1]);
+            }
+            return null;
+        }
+
+        function pushAgentTelemetryPoint(item) {
+            const agent = String(item?.agent || '').trim();
+            if (!agent) return;
+            const memMb = extractMemoryMb(item);
+            const tokens = parseTokenCount(item);
+            const ts = Date.now();
+            const key = safeDomKey(agent);
+            const history = store.agentTelemetryHistory[key] || [];
+            history.push({
+                ts,
+                memMb: Number.isFinite(memMb) ? memMb : null,
+                tokens: Number.isFinite(tokens) ? tokens : null,
+            });
+            store.agentTelemetryHistory[key] = history.slice(-48);
+        }
+
+        function drawMiniLine(canvasId, rows, pick, stroke) {
+            const canvas = document.getElementById(canvasId);
+            if (!canvas) return;
+            const width = canvas.width;
+            const height = canvas.height;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return;
+
+            ctx.clearRect(0, 0, width, height);
+            const vals = rows.map((r) => pick(r)).filter((v) => Number.isFinite(v));
+            if (!vals.length) {
+                ctx.strokeStyle = 'rgba(169,183,217,.35)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(4, height - 4);
+                ctx.lineTo(width - 4, 4);
+                ctx.stroke();
+                return;
+            }
+
+            const min = Math.min(...vals);
+            const max = Math.max(...vals);
+            const range = Math.max(1, max - min);
+            const points = rows.map((row, idx) => {
+                const value = pick(row);
+                if (!Number.isFinite(value)) return null;
+                const x = 4 + (idx / Math.max(1, rows.length - 1)) * (width - 8);
+                const y = height - 4 - ((value - min) / range) * (height - 8);
+                return { x, y };
+            }).filter(Boolean);
+            if (!points.length) return;
+
+            ctx.strokeStyle = stroke;
+            ctx.lineWidth = 1.6;
+            ctx.beginPath();
+            points.forEach((p, i) => {
+                if (i === 0) ctx.moveTo(p.x, p.y);
+                else ctx.lineTo(p.x, p.y);
+            });
+            ctx.stroke();
+        }
+
+        function drawMiniBars(canvasId, rows, pick, color) {
+            const canvas = document.getElementById(canvasId);
+            if (!canvas) return;
+            const width = canvas.width;
+            const height = canvas.height;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return;
+
+            ctx.clearRect(0, 0, width, height);
+            const vals = rows.map((r) => pick(r)).filter((v) => Number.isFinite(v));
+            if (!vals.length) {
+                ctx.strokeStyle = 'rgba(169,183,217,.35)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(4, height - 4);
+                ctx.lineTo(width - 4, 4);
+                ctx.stroke();
+                return;
+            }
+
+            const min = Math.min(...vals);
+            const max = Math.max(...vals);
+            const range = Math.max(1, max - min);
+            const bars = rows.map((row) => pick(row)).filter((v) => Number.isFinite(v));
+            if (!bars.length) return;
+
+            const barWidth = Math.max(2, Math.floor((width - 8) / Math.max(1, bars.length)) - 1);
+            ctx.fillStyle = color;
+            bars.forEach((value, index) => {
+                const normalized = (value - min) / range;
+                const h = Math.max(2, normalized * (height - 8));
+                const x = 4 + index * (barWidth + 1);
+                const y = height - 4 - h;
+                ctx.globalAlpha = 0.9;
+                ctx.fillRect(x, y, barWidth, h);
+            });
+            ctx.globalAlpha = 1;
+        }
+
+        function renderMiniChartModeControls() {
+            const mode = store.telemetryChartMode === 'bars' ? 'bars' : 'line';
+            const lineBtn = document.getElementById('mini-chart-line');
+            const barsBtn = document.getElementById('mini-chart-bars');
+            if (lineBtn) lineBtn.classList.toggle('active', mode === 'line');
+            if (barsBtn) barsBtn.classList.toggle('active', mode === 'bars');
+        }
+
+        function renderTelemetryCheck(rows) {
+            const node = document.getElementById('telemetry-check');
+            if (!node) return;
+            const report = store.insights?.telemetry_gaps || null;
+            const summary = report?.summary || null;
+            const total = Number(summary?.agents ?? rows.length) || 0;
+            if (!total) {
+                node.className = 'telemetry-check';
+                node.textContent = 'Telemetry check: waiting for agent metrics…';
+                return;
+            }
+
+            const memOk = Number(summary?.ram_numeric ?? rows.filter((r) => Number.isFinite(extractMemoryMb(r))).length) || 0;
+            const tokOk = Number(summary?.tokens_numeric ?? rows.filter((r) => Number.isFinite(parseTokenCount(r))).length) || 0;
+            const missingAgents = Array.isArray(report?.agents) ? report.agents : [];
+            const missingPreview = missingAgents.slice(0, 3).map((it) => String(it?.agent || '')).filter(Boolean).join(', ');
+
+            if (memOk === 0 && tokOk === 0) {
+                node.className = 'telemetry-check bad';
+                node.textContent = `Telemetry check: no RAM/token fields found in live payload (${total} agents observed). Charts stay flat until source metrics arrive.${missingPreview ? ` Missing: ${missingPreview}.` : ''}`;
+                return;
+            }
+
+            if (memOk < total || tokOk < total) {
+                node.className = 'telemetry-check warn';
+                node.textContent = `Telemetry check: RAM ${memOk}/${total}, Tokens ${tokOk}/${total} agents with numeric data.${missingPreview ? ` Missing: ${missingPreview}.` : ''}`;
+                return;
+            }
+
+            node.className = 'telemetry-check';
+            node.textContent = `Telemetry check: RAM ${memOk}/${total}, Tokens ${tokOk}/${total} (stream healthy).`;
+        }
+
+        function setMiniChartMode(mode) {
+            const next = mode === 'bars' ? 'bars' : 'line';
+            store.telemetryChartMode = next;
+            localStorage.setItem('miniChartMode', next);
+            renderMiniChartModeControls();
+            render();
+        }
+
+        function renderAgentTelemetryCharts(rows) {
+            rows.forEach((item) => pushAgentTelemetryPoint(item));
+            requestAnimationFrame(() => {
+                const draw = store.telemetryChartMode === 'bars' ? drawMiniBars : drawMiniLine;
+                rows.forEach((item) => {
+                    const key = safeDomKey(item.agent);
+                    const history = store.agentTelemetryHistory[key] || [];
+                    draw(`mini-mem-${key}`, history, (r) => r.memMb, '#5b8cff');
+                    draw(`mini-tok-${key}`, history, (r) => r.tokens, '#16c784');
+                });
+            });
+        }
+
+        // Map backend status values to semantic color classes.
+        function statusClass(status) {
+            const s = String(status || '').toLowerCase();
+            if (s.includes('ok') || s.includes('active')) return 'status-ok';
+            if (s.includes('attention') || s.includes('observed')) return 'status-warn';
+            return 'status-bad';
+        }
+
+        function setTab(tab) {
+            store.activeTab = tab;
+            document.querySelectorAll('.tab').forEach((node) => {
+                node.classList.toggle('active', node.dataset.tab === tab);
+            });
+            renderActiveTabHelp();
+            renderDrilldown();
+        }
+
+        function getActiveTabHelp(tab) {
+            const map = {
+                decisions: { label: 'Why decisions', anchor: '03-ui-ux-guide.md-why-decisions-tab' },
+                soul: { label: 'SOUL/file derivation', anchor: '03-ui-ux-guide.md-soul-file-derivation-tab' },
+                graph: { label: 'Causal Graph', anchor: '03-ui-ux-guide.md-causal-graph-tab' },
+                cron_timeline: { label: 'Cron timeline', anchor: '03-ui-ux-guide.md-cron-timeline-tab' },
+                timeline: { label: 'Full timeline', anchor: '03-ui-ux-guide.md-full-timeline-tab' },
+                overview: { label: 'Overview', anchor: '03-ui-ux-guide.md-overview-tab' },
+            };
+            return map[tab] || map.decisions;
+        }
+
+        function renderActiveTabHelp() {
+            const row = getActiveTabHelp(store.activeTab);
+            const label = document.getElementById('active-tab-help-text');
+            const btn = document.getElementById('active-tab-help');
+            if (label) label.textContent = `Active tab guide: ${row.label}.`;
+            if (btn) {
+                btn.setAttribute('data-doc', '03-ui-ux-guide.md');
+                btn.setAttribute('data-doc-anchor', row.anchor);
+            }
+        }
+
+        function renderBreadcrumbCrumb(crumb, isActive = false) {
+            if (!crumb || !crumb.label) return '';
+            const action = crumb.action || '';
+            const value = crumb.value || '';
+            const strong = crumb.strong ? 'crumb-strong' : '';
+            const active = isActive ? 'active' : '';
+            const labelHtml = action === 'agent'
+                ? agentBadge(value || crumb.label, true)
+                : `<span class="${strong}">${esc(crumb.label)}</span>`;
+            if (!action) {
+                return labelHtml;
+            }
+
+            let hint = '';
+            if (action === 'swarm') hint = 'Reset focus and return to swarm-level view';
+            else if (action === 'agent') hint = `Open deep investigation for ${crumb.label}`;
+            else if (action === 'tab') hint = `Jump to tab: ${crumb.label}`;
+            else if (action === 'overview-link') hint = 'Return to decisions linked from overview level-3';
+            else if (action === 'decision') hint = `Focus linked decision ${crumb.label}`;
+            else if (action === 'node') hint = `Open graph node ${crumb.label}`;
+
+            if (action === 'agent') {
+                return `<span class="agent-badge compact nav-action" style="--agent-accent:${esc(agentColor(value || crumb.label))};" data-bc-action="${esc(action)}" data-bc-value="${esc(value)}" title="${esc(hint)}" aria-label="${esc(hint)}" role="button" tabindex="0">${esc(value || crumb.label)}</span>`;
+            }
+
+            return `<button class="crumb-btn ${active}" data-bc-action="${esc(action)}" data-bc-value="${esc(value)}" title="${esc(hint)}" aria-label="${esc(hint)}">${labelHtml}</button>`;
+        }
+
+        async function handleBreadcrumbAction(action, value) {
+            if (action === 'swarm') {
+                store.selectedAgent = null;
+                store.drilldown = null;
+                store.nodeDetails = null;
+                store.overviewBacklink = null;
+                render();
+                return;
+            }
+
+            if (action === 'agent') {
+                if (value) await openDrilldown(value);
+                return;
+            }
+
+            if (action === 'tab') {
+                if (value) setTab(value);
+                return;
+            }
+
+            if (action === 'overview-link' || action === 'decision') {
+                setTab('decisions');
+                return;
+            }
+
+            if (action === 'node') {
+                setTab('graph');
+                if (value) await openNodeDetails(value);
+            }
+        }
+
+        async function loadDocsIndex() {
+            try {
+                const response = await fetch('/docs/index');
+                if (!response.ok) return [];
+                const payload = await response.json();
+                const docs = Array.isArray(payload.docs) ? payload.docs : [];
+                store.docsIndex = docs;
+                return docs;
+            } catch (error) {
+                console.error('docs index error', error);
+                return [];
+            }
+        }
+
+        function slugifyHeading(text) {
+            return String(text || '')
+                .toLowerCase()
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .replace(/[^a-z0-9\s-]/g, '')
+                .trim()
+                .replace(/\s+/g, '-')
+                .replace(/-+/g, '-');
+        }
+
+        function stripMarkdownInline(text) {
+            return String(text || '')
+                .replace(/`([^`]+)`/g, '$1')
+                .replace(/\*\*([^*]+)\*\*/g, '$1')
+                .replace(/\*([^*]+)\*/g, '$1')
+                .replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1')
+                .replace(/<[^>]*>/g, '')
+                .trim();
+        }
+
+        function extractDocSections(markdownText) {
+            const lines = String(markdownText || '').split(/\r?\n/);
+            const h1 = [];
+            const h2 = [];
+            for (const line of lines) {
+                const m1 = line.match(/^\s*#\s+(.+)\s*$/);
+                if (m1) {
+                    const label = stripMarkdownInline(m1[1]);
+                    if (label) h1.push(label);
+                    continue;
+                }
+                const m2 = line.match(/^\s*##\s+(.+)\s*$/);
+                if (m2) {
+                    const label = stripMarkdownInline(m2[1]);
+                    if (label) h2.push(label);
+                }
+            }
+            return { h1, h2 };
+        }
+
+        function markdownToHtml(markdownText) {
+            const raw = String(markdownText || '');
+            const parsed = marked.parse(raw, {
+                gfm: true,
+                breaks: false,
+                async: false,
+            });
+            return DOMPurify.sanitize(parsed, {
+                USE_PROFILES: { html: true },
+            });
+        }
+
+        function enhanceDocHeadings(container, docName) {
+            const headingNodes = container.querySelectorAll('h1, h2');
+            const used = new Set();
+            headingNodes.forEach((node, index) => {
+                const label = node.textContent || '';
+                const base = slugifyHeading(label) || `section-${index + 1}`;
+                let id = `${docName}-${base}`;
+                let suffix = 2;
+                while (used.has(id)) {
+                    id = `${docName}-${base}-${suffix}`;
+                    suffix += 1;
+                }
+                used.add(id);
+                node.id = id;
+                node.classList.add('docs-anchor-target');
+            });
+        }
+
+        function highlightCodeBlocks(container) {
+            container.querySelectorAll('pre code').forEach((node) => {
+                try {
+                    hljs.highlightElement(node);
+                } catch (error) {
+                    console.error('highlight error', error);
+                }
+            });
+        }
+
+        function renderDocsMenu() {
+            const menu = document.getElementById('docs-menu');
+            const rows = Array.isArray(store.docsCatalog) ? store.docsCatalog : [];
+            if (!rows.length) {
+                menu.innerHTML = '<div class="docs-menu-empty">No documentation sections found.</div>';
+                return;
+            }
+
+            menu.innerHTML = rows.map((row) => {
+                const isDocActive = String(store.docsCurrent || '') === String(row.doc || '');
+                const mainActive = isDocActive && !store.docsCurrentAnchor ? 'active' : '';
+                const children = (row.children || []).map((child) => {
+                    const childActive = isDocActive && String(store.docsCurrentAnchor || '') === String(child.id || '') ? 'active' : '';
+                    return `<button class="docs-menu-btn sub ${childActive}" data-doc-name="${esc(row.doc || '')}" data-doc-anchor="${esc(child.id || '')}">${esc(child.label || '')}</button>`;
+                }).join('');
+
+                return `
+                    <div class="docs-tree-group">
+                        <button class="docs-menu-btn main ${mainActive}" data-doc-name="${esc(row.doc || '')}">${esc(row.title || 'Section')}</button>
+                        <div class="docs-subtree">${children || ''}</div>
+                    </div>
+                `;
+            }).join('');
+
+            menu.querySelectorAll('[data-doc-name]').forEach((node) => {
+                node.addEventListener('click', () => {
+                    const docName = node.getAttribute('data-doc-name') || '';
+                    const anchor = node.getAttribute('data-doc-anchor') || null;
+                    openDocsModal(docName, anchor);
+                });
+            });
+        }
+
+        async function fetchDocContent(docName) {
+            const target = String(docName || '').trim();
+            if (!target) return null;
+            if (store.docsPayloadByName[target]) return store.docsPayloadByName[target];
+            try {
+                const response = await fetch(`/docs/content/${encodeURIComponent(target)}`);
+                if (!response.ok) return null;
+                const payload = await response.json();
+                if (payload && payload.found) {
+                    store.docsPayloadByName[target] = payload;
+                }
+                return payload;
+            } catch (error) {
+                console.error('doc content error', error);
+                return null;
+            }
+        }
+
+        async function buildDocsCatalog() {
+            if (store.docsCatalog.length) return store.docsCatalog;
+            const rows = Array.isArray(store.docsIndex) ? store.docsIndex : [];
+            if (!rows.length) return [];
+
+            const catalog = [];
+            let untitledCount = 0;
+            for (const row of rows) {
+                const docName = String(row.name || '').trim();
+                if (!docName) continue;
+                const payload = await fetchDocContent(docName);
+                if (!payload || !payload.found) continue;
+
+                const sections = extractDocSections(payload.content || '');
+                let title = sections.h1[0] || '';
+                if (!title) {
+                    untitledCount += 1;
+                    title = `Section ${untitledCount}`;
+                }
+                const children = sections.h2.slice(0, 60).map((label) => ({
+                    label,
+                    id: `${docName}-${slugifyHeading(label)}`,
+                }));
+
+                catalog.push({
+                    doc: docName,
+                    title,
+                    children,
+                });
+            }
+
+            store.docsCatalog = catalog;
+            return catalog;
+        }
+
+        function closeDocsModal() {
+            const modal = document.getElementById('docs-modal');
+            modal.classList.remove('open');
+            modal.setAttribute('aria-hidden', 'true');
+        }
+
+        function closeOverviewModal() {
+            const modal = document.getElementById('overview-modal');
+            modal.classList.remove('open');
+            modal.setAttribute('aria-hidden', 'true');
+            store.overviewCurrent = null;
+            store.overviewSelectedAgent = null;
+        }
+
+        function renderOverviewLines(lines) {
+            if (!Array.isArray(lines) || !lines.length) {
+                return '<div class="overview-detail"><h4>Detail</h4><div>No records available.</div></div>';
+            }
+            return `<ul class="overview-lines">${lines.map((line) => `<li>${esc(line)}</li>`).join('')}</ul>`;
+        }
+
+        function buildOverviewEntries(metricKey) {
+            const insights = store.insights || {};
+            const agents = Array.isArray(insights.agents) ? insights.agents : [];
+            const cronByAgent = insights?.cron?.by_agent || {};
+            const ua = Array.isArray(insights?.interactions?.user_agent) ? insights.interactions.user_agent : [];
+            const aa = Array.isArray(insights?.interactions?.agent_agent) ? insights.interactions.agent_agent : [];
+
+            if (metricKey === 'agents') {
+                return agents
+                    .map((agent) => ({
+                        agent: agent.agent || 'unknown',
+                        lines: [
+                            `Status: ${agent.status || 'unknown'}`,
+                            `Task: ${agent.task || '—'}`,
+                            `Cron jobs: ${agent.cron_jobs ?? 0}`,
+                            `Last event: ${agent.last_seen || 'n/a'}`,
+                        ],
+                    }))
+                    .sort((a, b) => a.agent.localeCompare(b.agent));
+            }
+
+            if (metricKey === 'cron') {
+                return Object.entries(cronByAgent)
+                    .map(([agent, rows]) => ({
+                        agent,
+                        lines: (rows || []).map((job) => `${job.name || 'job'} · status=${job.last_status || 'unknown'} · next=${job.next_run_at || 'n/a'} · interrupted=${job.interrupted ? 'yes' : 'no'}`),
+                    }))
+                    .sort((a, b) => (b.lines.length - a.lines.length) || a.agent.localeCompare(b.agent));
+            }
+
+            if (metricKey === 'user_agent') {
+                const bucket = {};
+                ua.forEach((row) => {
+                    const key = row.agent || 'unknown';
+                    bucket[key] = bucket[key] || [];
+                    bucket[key].push(`${row.ts || 'n/a'} · ${row.actor || 'user'} · ${row.text || ''}`);
+                });
+                return Object.entries(bucket)
+                    .map(([agent, lines]) => ({ agent, lines }))
+                    .sort((a, b) => (b.lines.length - a.lines.length) || a.agent.localeCompare(b.agent));
+            }
+
+            if (metricKey === 'agent_agent') {
+                const bucket = {};
+                aa.forEach((row) => {
+                    const source = row.source || 'unknown';
+                    bucket[source] = bucket[source] || [];
+                    bucket[source].push(`${row.ts || 'n/a'} · to ${row.target || 'unknown'} · ${row.text || ''}`);
+                });
+                return Object.entries(bucket)
+                    .map(([agent, lines]) => ({ agent, lines }))
+                    .sort((a, b) => (b.lines.length - a.lines.length) || a.agent.localeCompare(b.agent));
+            }
+
+            const interruptedByAgent = {};
+            Object.entries(cronByAgent).forEach(([agent, rows]) => {
+                (rows || []).forEach((job) => {
+                    if (!job?.interrupted) return;
+                    interruptedByAgent[agent] = interruptedByAgent[agent] || [];
+                    interruptedByAgent[agent].push(`${job.name || 'job'} · status=${job.last_status || 'unknown'} · last=${job.last_run_at || 'n/a'} · next=${job.next_run_at || 'n/a'}`);
+                });
+            });
+            return Object.entries(interruptedByAgent)
+                .map(([agent, lines]) => ({ agent, lines }))
+                .sort((a, b) => (b.lines.length - a.lines.length) || a.agent.localeCompare(b.agent));
+        }
+
+        function renderOverviewAgentDeep(agentName) {
+            const payload = store.overviewDeepByAgent[agentName];
+            if (!payload) {
+                return `
+                    <div class="overview-detail">
+                        <h4>Level 2 drilldown</h4>
+                        <div>Press <strong>Load level-2 drilldown</strong> to fetch complete analysis for this agent.</div>
+                    </div>
+                `;
+            }
+            if (!payload.found) {
+                return '<div class="overview-detail"><h4>Level 2 drilldown</h4><div>Drilldown payload not available for selected agent.</div></div>';
+            }
+
+            const depth = payload.depth || {};
+            const overview = depth.overview || {};
+            const decisions = Array.isArray(depth.decision_trace) ? depth.decision_trace : [];
+            const cronTimeline = Array.isArray(depth.cron_timeline) ? depth.cron_timeline : [];
+            const roots = Array.isArray(depth.context_roots) ? depth.context_roots : [];
+
+            const decisionRows = decisions.slice(0, 10).map((row, index) => ({
+                index,
+                ts: row.ts || 'n/a',
+                confidence: row.confidence || 'n/a',
+                text: row.decision || '—',
+            }));
+            const cronLines = cronTimeline.slice(-10).map((row) => `${row.ts || 'n/a'} · ${row.job || 'job'} · ${row.status || row.kind || 'event'} · ${row.summary || '—'}`);
+            const rootLines = roots.slice(0, 8).map((row) => `${row.file || 'file'} · anchors=${(row.matched_anchors || []).length}`);
+            const decisionHtml = decisionRows.length
+                ? `<ul class="overview-decision-list">${decisionRows.map((row) => `
+                    <li class="overview-decision-item">
+                        <div class="overview-decision-meta">${esc(row.ts)} · confidence=${esc(row.confidence)}</div>
+                        <div class="overview-decision-text">${esc(row.text)}</div>
+                        <button class="overview-cta" data-overview-open-graph="${esc(agentName)}" data-overview-decision-index="${row.index}">Open in Causal Graph (level-3)</button>
+                    </li>
+                `).join('')}</ul>`
+                : '<div>No decision entries available.</div>';
+
+            return `
+                <div class="overview-grid">
+                    <div class="overview-detail"><h4>Agent snapshot</h4>${renderOverviewLines([
+                        `Status: ${overview.status || 'unknown'}`,
+                        `Task: ${overview.task || '—'}`,
+                        `Last seen: ${overview.last_seen || 'n/a'}`,
+                        `Cron jobs: ${overview.cron_jobs ?? 0}`,
+                        `Interrupted tasks: ${(overview.interrupted_tasks || []).length}`,
+                    ])}</div>
+                    <div class="overview-detail"><h4>Top decisions (actionable)</h4>${decisionHtml}</div>
+                    <div class="overview-detail"><h4>Recent cron evidence</h4>${renderOverviewLines(cronLines)}</div>
+                    <div class="overview-detail"><h4>Context roots</h4>${renderOverviewLines(rootLines)}</div>
+                </div>
+            `;
+        }
+
+        async function openOverviewGraphDecision(agentName, decisionIndexRaw) {
+            const decisionIndex = Number(decisionIndexRaw);
+            await openDrilldown(agentName);
+            setTab('graph');
+
+            const graphNodes = store.drilldown?.depth?.causal_graph?.nodes || [];
+            let nodeId = Number.isFinite(decisionIndex) ? `decision:${decisionIndex}` : '';
+            if (!nodeId || !graphNodes.some((row) => String(row.id) === String(nodeId))) {
+                const fallback = graphNodes.find((row) => String(row.group || '') === 'decision');
+                nodeId = fallback ? String(fallback.id || '') : '';
+            }
+
+            const traceRow = Number.isFinite(decisionIndex)
+                ? (store.drilldown?.depth?.decision_trace || [])[decisionIndex]
+                : null;
+            store.overviewBacklink = {
+                agent: agentName,
+                decisionIndex: Number.isFinite(decisionIndex) ? decisionIndex : null,
+                nodeId: nodeId || null,
+                decisionText: traceRow?.decision || '',
+                ts: traceRow?.ts || '',
+            };
+
+            if (nodeId) {
+                await openNodeDetails(nodeId);
+            }
+            closeOverviewModal();
+        }
+
+        function clearOverviewBacklink() {
+            store.overviewBacklink = null;
+            renderDrilldown();
+        }
+
+        async function openBacklinkGraphNode() {
+            const link = store.overviewBacklink;
+            if (!link || !link.agent) return;
+            if (!store.drilldown || store.drilldown.agent !== link.agent) {
+                await openDrilldown(link.agent);
+            }
+            setTab('graph');
+            if (link.nodeId) {
+                await openNodeDetails(link.nodeId);
+            }
+        }
+
+        function bindOverviewModalInteractions() {
+            const content = document.getElementById('overview-content');
+            if (!content || content.dataset.bound === '1') return;
+            content.addEventListener('click', async (event) => {
+                const agentBtn = event.target.closest('[data-overview-agent]');
+                if (agentBtn) {
+                    store.overviewSelectedAgent = agentBtn.getAttribute('data-overview-agent') || null;
+                    const detail = renderOverviewDetail(store.overviewCurrent || 'agents');
+                    document.getElementById('overview-title').textContent = detail.title;
+                    content.innerHTML = detail.html;
+                    return;
+                }
+
+                const loadBtn = event.target.closest('[data-overview-load-deep]');
+                if (loadBtn) {
+                    const agent = loadBtn.getAttribute('data-overview-load-deep') || '';
+                    if (!agent) return;
+                    try {
+                        const response = await fetch(`/drilldown/${encodeURIComponent(agent)}`);
+                        store.overviewDeepByAgent[agent] = response.ok ? await response.json() : { found: false };
+                    } catch (error) {
+                        console.error('overview drilldown error', error);
+                        store.overviewDeepByAgent[agent] = { found: false };
+                    }
+                    const detail = renderOverviewDetail(store.overviewCurrent || 'agents');
+                    document.getElementById('overview-title').textContent = detail.title;
+                    content.innerHTML = detail.html;
+                }
+
+                const graphBtn = event.target.closest('[data-overview-open-graph]');
+                if (graphBtn) {
+                    const agent = graphBtn.getAttribute('data-overview-open-graph') || '';
+                    const index = graphBtn.getAttribute('data-overview-decision-index') || '';
+                    if (!agent) return;
+                    await openOverviewGraphDecision(agent, index);
+                }
+            });
+            content.dataset.bound = '1';
+        }
+
+        function renderOverviewDetail(metricKey) {
+            const titleMap = {
+                agents: 'Observed agents · Deep detail',
+                cron: 'Active cron jobs · Deep detail',
+                user_agent: 'User → agent interactions · Deep detail',
+                agent_agent: 'Agent → agent interactions · Deep detail',
+                interrupted: 'Non-ok/interrupted tasks · Deep detail',
+            };
+
+            const entries = buildOverviewEntries(metricKey);
+            const chosen = store.overviewSelectedAgent && entries.some((row) => row.agent === store.overviewSelectedAgent)
+                ? store.overviewSelectedAgent
+                : (entries[0]?.agent || null);
+            store.overviewSelectedAgent = chosen;
+
+            if (!entries.length) {
+                return {
+                    title: titleMap[metricKey] || 'Overview detail',
+                    html: '<div class="overview-detail"><h4>Detail</h4><div>No records available for this metric.</div></div>',
+                };
+            }
+
+            const selectedRow = entries.find((row) => row.agent === chosen) || entries[0];
+            const listHtml = entries.map((row) => {
+                const active = row.agent === selectedRow.agent ? 'active' : '';
+                return `
+                    <button class="overview-agent-btn ${active}" data-overview-agent="${esc(row.agent)}">
+                        <div>${agentBadge(row.agent, true)}</div>
+                        <div class="overview-subline">${esc(row.lines.length)} evidence lines</div>
+                    </button>
+                `;
+            }).join('');
+
+            const selectedLines = selectedRow.lines || [];
+            const suggestions = [
+                'Open Why decisions tab to validate rationale.',
+                'Inspect Cron timeline for execution evidence.',
+                'Inspect SOUL/file derivation for constraints alignment.',
+                'Use Causal Graph for root-to-outcome causality.',
+            ];
+
+            return {
+                title: titleMap[metricKey] || 'Overview detail',
+                html: `
+                    <div class="overview-grid deep">
+                        <div class="overview-detail">
+                            <h4>Agents involved</h4>
+                            <div class="overview-agent-list">${listHtml}</div>
+                        </div>
+                        <div class="overview-detail">
+                            <div class="overview-deep-head">
+                                <h4 style="margin:0;">Agent focus: ${agentBadge(selectedRow.agent, true)}</h4>
+                                <button class="overview-cta" data-overview-load-deep="${esc(selectedRow.agent)}">Load level-2 drilldown</button>
+                            </div>
+                            <div class="overview-detail" style="margin-bottom:8px;"><h4>Metric evidence</h4>${renderOverviewLines(selectedLines.slice(0, 120))}</div>
+                            <div class="overview-detail" style="margin-bottom:8px;"><h4>Strategic next checks</h4>${renderOverviewLines(suggestions)}</div>
+                            ${renderOverviewAgentDeep(selectedRow.agent)}
+                        </div>
+                    </div>
+                `,
+            };
+        }
+
+        function openOverviewModal(metricKey) {
+            const modal = document.getElementById('overview-modal');
+            const title = document.getElementById('overview-title');
+            const content = document.getElementById('overview-content');
+            bindOverviewModalInteractions();
+            const detail = renderOverviewDetail(metricKey);
+            store.overviewCurrent = metricKey;
+            title.textContent = detail.title;
+            content.innerHTML = detail.html;
+            modal.classList.add('open');
+            modal.setAttribute('aria-hidden', 'false');
+        }
+
+        async function openDocsModal(targetDoc = null, targetAnchor = null) {
+            const modal = document.getElementById('docs-modal');
+            const title = document.getElementById('docs-title');
+            const content = document.getElementById('docs-content');
+            modal.classList.add('open');
+            modal.setAttribute('aria-hidden', 'false');
+
+            if (!store.docsIndex.length) {
+                await loadDocsIndex();
+            }
+            await buildDocsCatalog();
+
+            const rows = store.docsCatalog;
+            if (!rows.length) {
+                title.textContent = 'Documentation';
+                content.textContent = 'No docs available.';
+                return;
+            }
+
+            const defaultDoc = rows[0].doc;
+            const docToOpen = targetDoc || store.docsCurrent || defaultDoc;
+            const payload = await fetchDocContent(docToOpen);
+            if (!payload || !payload.found) {
+                title.textContent = 'Documentation';
+                content.textContent = `Unable to load ${docToOpen}.`;
+                return;
+            }
+
+            store.docsCurrent = payload.doc || docToOpen;
+            store.docsCurrentAnchor = targetAnchor || null;
+
+            const currentCatalog = rows.find((item) => String(item.doc || '') === String(store.docsCurrent || ''));
+            title.textContent = currentCatalog?.title || 'Documentation';
+
+            content.innerHTML = markdownToHtml(payload.content || '');
+            enhanceDocHeadings(content, store.docsCurrent);
+            highlightCodeBlocks(content);
+
+            if (store.docsCurrentAnchor) {
+                const anchorNode = document.getElementById(store.docsCurrentAnchor);
+                if (anchorNode) {
+                    anchorNode.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            } else {
+                content.scrollTop = 0;
+            }
+            renderDocsMenu();
+        }
+
+        async function openDrilldown(agentName) {
+            store.selectedAgent = agentName;
+            store.nodeDetails = null;
+            try {
+                const response = await fetch(`/drilldown/${encodeURIComponent(agentName)}`);
+                if (!response.ok) {
+                    store.drilldown = null;
+                    renderDrilldown();
+                    return;
+                }
+                store.drilldown = await response.json();
+                renderDrilldown();
+            } catch (error) {
+                console.error('drilldown error', error);
+            }
+        }
+        window.openDrilldown = openDrilldown;
+
+        function renderAgentCard(item) {
+            const missions = Array.isArray(item.active_missions) && item.active_missions.length ? item.active_missions.join(', ') : '—';
+            const interrupted = Array.isArray(item.interrupted_tasks) ? item.interrupted_tasks.length : 0;
+            const selectedClass = String(store.selectedAgent || '') === String(item.agent || '') ? 'selected' : '';
+            const key = safeDomKey(item.agent);
+            const memVal = extractMemoryMb(item);
+            const tokVal = parseTokenCount(item);
+            const hostCpu = Number(store.insights?.resource_probe?.cpu_percent);
+            const hostGpu = Number(store.insights?.resource_probe?.gpu_util_percent);
+            const hostCpuText = Number.isFinite(hostCpu) ? `${hostCpu.toFixed(1)}%` : 'n/a';
+            const hostGpuText = Number.isFinite(hostGpu) ? `${hostGpu.toFixed(1)}%` : 'n/a';
+            return `
+                <article class="agent-card ${selectedClass}" onclick="openDrilldown('${esc(item.agent)}')">
+                    <div class="agent-top">
+                        ${agentBadge(item.agent)}
+                        <span class="chip live">● live</span>
+                    </div>
+                    <div class="kv"><span class="muted">Status:</span> <span class="${statusClass(item.status)}">${esc(item.status || 'unknown')}</span></div>
+                    <div class="kv"><span class="muted">Task:</span> ${esc(item.task || '—')}</div>
+                    <div class="kv"><span class="muted">Cron:</span> ${esc(item.cron_jobs ?? 0)} ${interrupted ? `<span class="chip bad">${interrupted} non-ok</span>` : ''}</div>
+                    <div class="kv"><span class="muted">Missions:</span> ${esc(missions)}</div>
+                    <div class="kv"><span class="muted">Last event:</span> ${esc(item.last_seen || '—')}</div>
+                    <div class="kv"><span class="muted">Host CPU/GPU:</span> ${esc(hostCpuText)} / ${esc(hostGpuText)}</div>
+                    <div class="mini-metrics">
+                        <div class="mini-metric">
+                            <div class="mini-metric-label">RAM</div>
+                            <div>
+                                <canvas class="mini-canvas" id="mini-mem-${esc(key)}" width="220" height="34"></canvas>
+                                <div class="mini-metric-value">${Number.isFinite(memVal) ? `${memVal.toFixed(1)} MB` : 'n/a'}</div>
+                            </div>
+                        </div>
+                        <div class="mini-metric">
+                            <div class="mini-metric-label">TOKENS</div>
+                            <div>
+                                <canvas class="mini-canvas" id="mini-tok-${esc(key)}" width="220" height="34"></canvas>
+                                <div class="mini-metric-value">${Number.isFinite(tokVal) ? Math.round(tokVal).toLocaleString() : 'n/a'}</div>
+                            </div>
+                        </div>
+                    </div>
+                </article>
+            `;
+        }
+
+        function renderAgents() {
+            const grid = document.getElementById('agent-grid');
+            const rows = Array.from(store.agents.values()).sort((a, b) => String(a.agent).localeCompare(String(b.agent)));
+            grid.innerHTML = rows.length ? rows.map(renderAgentCard).join('') : '<div class="row">Waiting for agent data...</div>';
+            if (rows.length) renderAgentTelemetryCharts(rows);
+            renderTelemetryCheck(rows);
+            document.getElementById('kpi-agents').textContent = String(rows.length);
+            const hint = document.getElementById('selection-hint');
+            if (!store.selectedAgent) {
+                hint.textContent = '1) Select an agent to unlock deep investigation and causal graph analysis.';
+            } else {
+                hint.innerHTML = `Selected agent: ${agentBadge(store.selectedAgent, true)}. You can switch agent at any time.`;
+            }
+        }
+
+        function renderInteractions() {
+            const ua = (store.insights?.interactions?.user_agent || []).slice(0, 100);
+            const aa = (store.insights?.interactions?.agent_agent || []).slice(0, 100);
+            document.getElementById('kpi-ua').textContent = String(ua.length);
+            document.getElementById('kpi-aa').textContent = String(aa.length);
+
+            document.getElementById('user-agent-list').innerHTML = ua.length ? ua.map((it) => `
+                <div class="row">
+                    <div>${agentBadge(it.agent, true)} · ${esc(it.actor || 'unknown')}</div>
+                    <div>${esc(it.text || '')}</div>
+                    <div class="when">${esc(it.ts || '')}</div>
+                </div>
+            `).join('') : '<div class="row">No user/agent interactions detected.</div>';
+
+            document.getElementById('agent-agent-list').innerHTML = aa.length ? aa.map((it) => `
+                <div class="row">
+                    <div>${agentBadge(it.source, true)} → ${agentBadge(it.target, true)}</div>
+                    <div>${esc(it.text || '')}</div>
+                    <div class="when">${esc(it.ts || '')}</div>
+                </div>
+            `).join('') : '<div class="row">No agent/agent interactions detected.</div>';
+        }
+
+        function renderDrilldown() {
+            const title = document.getElementById('drill-title');
+            const body = document.getElementById('drill-body');
+            const selectedLabel = document.getElementById('selected-agent-label');
+            const breadcrumb = document.getElementById('investigation-breadcrumb');
+            const payload = store.drilldown;
+
+            const tabLabels = {
+                decisions: 'Why decisions',
+                soul: 'SOUL/file derivation',
+                graph: 'Causal Graph',
+                cron_timeline: 'Cron timeline',
+                timeline: 'Full timeline',
+                overview: 'Overview',
+            };
+
+            if (!payload || !payload.found) {
+                title.textContent = 'Deep investigation (select an agent)';
+                selectedLabel.textContent = 'Current agent: none';
+                if (breadcrumb) {
+                    breadcrumb.innerHTML = `Path: ${renderBreadcrumbCrumb({ label: 'Swarm', action: 'swarm', strong: true }, true)}`;
+                }
+                body.innerHTML = 'No agent selected yet.';
+                return;
+            }
+
+            const depth = payload.depth || {};
+            title.textContent = `Investigation ${payload.agent} · ${store.activeTab}`;
+            selectedLabel.innerHTML = `Current agent: ${agentBadge(payload.agent, true)}`;
+
+            const crumbs = [
+                { label: 'Swarm', action: 'swarm', strong: true },
+                { label: String(payload.agent || 'unknown'), action: 'agent', value: String(payload.agent || ''), strong: true },
+                { label: tabLabels[store.activeTab] || store.activeTab || 'decisions', action: 'tab', value: store.activeTab },
+            ];
+            if (store.overviewBacklink && String(store.overviewBacklink.agent || '') === String(payload.agent || '')) {
+                crumbs.push({ label: 'Overview link', action: 'overview-link' });
+                if (Number.isFinite(store.overviewBacklink.decisionIndex)) {
+                    crumbs.push({ label: `Decision #${String(store.overviewBacklink.decisionIndex)}`, action: 'decision' });
+                }
+            }
+            if (store.activeTab === 'graph' && store.nodeDetails?.node?.id) {
+                crumbs.push({ label: `Node ${String(store.nodeDetails.node.id)}`, action: 'node', value: String(store.nodeDetails.node.id) });
+            }
+            if (breadcrumb) {
+                const currentTabAction = 'tab';
+                const currentTabValue = store.activeTab;
+                const rendered = crumbs.map((crumb) => {
+                    const isActive = crumb?.action === currentTabAction && String(crumb?.value || '') === String(currentTabValue || '');
+                    return renderBreadcrumbCrumb(crumb, isActive);
+                });
+                breadcrumb.innerHTML = `Path: ${rendered.join('<span class="sep">›</span>')}`;
+            }
+
+            if (store.activeTab === 'overview') {
+                const o = depth.overview || {};
+                body.innerHTML = `
+                    <div class="trace-item"><span class="pill">Status</span>${esc(o.status || 'unknown')}</div>
+                    <div class="trace-item"><span class="pill">Task</span>${esc(o.task || '—')}</div>
+                    <div class="trace-item"><span class="pill">Last Seen</span>${esc(o.last_seen || '—')}</div>
+                    <div class="trace-item"><span class="pill">Cron Jobs</span>${esc(o.cron_jobs ?? 0)}</div>
+                    <div class="trace-item"><span class="pill">Interrupted</span>${esc((o.interrupted_tasks || []).length)}</div>
+                `;
+                return;
+            }
+
+            if (store.activeTab === 'timeline') {
+                const rows = (depth.timeline || []).slice(0, 120);
+                body.innerHTML = rows.length ? rows.map((row) => `
+                    <div class="trace-item">
+                        <div><span class="pill">${esc(row.source || 'source')}</span><span class="pill">${esc(row.type || 'type')}</span></div>
+                        <div>${esc(row.text || '')}</div>
+                        <div class="when">${esc(row.ts || '')}</div>
+                    </div>
+                `).join('') : 'Timeline not available.';
+                return;
+            }
+
+            if (store.activeTab === 'cron_timeline') {
+                const rows = (depth.cron_timeline || []).slice(-120);
+                body.innerHTML = rows.length ? rows.map((row) => `
+                    <div class="trace-item">
+                        <div><span class="pill">${esc(row.kind || 'event')}</span><span class="pill">${esc(row.job || 'cron')}</span><span class="pill ${statusClass(row.status)}">${esc(row.status || '')}</span></div>
+                        <div>${esc(row.summary || '—')}</div>
+                        <div class="small">${row.in_seconds != null ? `in ${esc(row.in_seconds)}s` : ''} ${row.duration_ms ? `· duration ${esc(row.duration_ms)}ms` : ''}</div>
+                        <div class="when">${esc(row.ts || '')}</div>
+                    </div>
+                `).join('') : 'No cron timeline available.';
+                return;
+            }
+
+            if (store.activeTab === 'soul') {
+                const roots = (depth.context_roots || []).slice(0, 20);
+                body.innerHTML = roots.length ? roots.map((row) => `
+                    <div class="trace-item">
+                        <div><span class="pill">root file</span>${esc(row.file || '')}</div>
+                        <div class="small"><strong>Anchor matches:</strong> ${esc((row.matched_anchors || []).join(' · ') || 'none')}</div>
+                        <div class="small muted">${esc((row.anchors || []).slice(0, 6).join(' | '))}</div>
+                    </div>
+                `).join('') : 'No context files available for this agent.';
+                return;
+            }
+
+            if (store.activeTab === 'graph') {
+                body.innerHTML = renderCausalGraph(depth.causal_graph || { nodes: [], edges: [] });
+                initGraphViewport();
+                return;
+            }
+
+            const rows = (depth.decision_trace || []).slice(0, 80);
+            const backlink = store.overviewBacklink;
+            const showBacklink = backlink && String(backlink.agent || '') === String(payload.agent || '');
+            const banner = showBacklink ? `
+                <div class="backlink-banner">
+                    <div><strong>Backlink:</strong> opened from overview level-3 · decision ${esc((backlink.decisionIndex ?? '-') + '')} ${backlink.decisionText ? `· ${esc(backlink.decisionText)}` : ''}</div>
+                    <div style="display:flex;gap:6px;">
+                        <button class="overview-cta" id="open-backlink-graph">Open linked graph node</button>
+                        <button class="overview-cta" id="clear-backlink">Clear link</button>
+                    </div>
+                </div>
+            ` : '';
+            body.innerHTML = rows.length ? `${banner}${rows.map((row, idx) => {
+                const linked = showBacklink && Number(backlink.decisionIndex) === idx ? 'linked' : '';
+                return `
+                <div class="trace-item ${linked}">
+                    <div><span class="pill">confidence ${esc(row.confidence || 'n/a')}</span><span class="pill">${esc(row.source || '')}</span></div>
+                    <div><strong>Decision:</strong> ${esc(row.decision || '')}</div>
+                    <div class="small"><strong>Why:</strong> ${esc((row.why || []).join(' · ') || '—')}</div>
+                    <div class="small muted"><strong>Runtime evidence:</strong> ${esc((row.evidence || []).join(' | ') || '—')}</div>
+                    <div class="small muted"><strong>Root causes (SOUL/files):</strong> ${esc((row.root_causes || []).map((x) => `${x.file}: ${(x.anchors || []).join(', ')}`).join(' | ') || '—')}</div>
+                    <div class="when">${esc(row.ts || '')}</div>
+                </div>
+                `;
+            }).join('')}` : 'Decision trace not available.';
+
+            if (showBacklink) {
+                const openBtn = document.getElementById('open-backlink-graph');
+                const clearBtn = document.getElementById('clear-backlink');
+                if (openBtn) openBtn.addEventListener('click', openBacklinkGraphNode);
+                if (clearBtn) clearBtn.addEventListener('click', clearOverviewBacklink);
+            }
+        }
+
+        function groupColor(group) {
+            const map = {
+                agent: '#6ea8ff',
+                root: '#f59e0b',
+                decision: '#16c784',
+                action: '#c084fc',
+                outcome_ok: '#22c55e',
+                outcome_bad: '#ef4444',
+            };
+            return map[group] || '#64748b';
+        }
+
+        function splitGraphLabel(value, maxCharsPerLine = 24, maxLines = 2) {
+            const text = String(value || '').replace(/\s+/g, ' ').trim();
+            if (!text) return [''];
+            const words = text.split(' ');
+            const lines = [];
+            let current = '';
+
+            for (const word of words) {
+                let token = word;
+                while (token.length > maxCharsPerLine) {
+                    const chunk = token.slice(0, maxCharsPerLine - 1) + '…';
+                    if (current) {
+                        lines.push(current);
+                        current = '';
+                    }
+                    lines.push(chunk);
+                    token = token.slice(maxCharsPerLine - 1);
+                    if (lines.length >= maxLines) return lines.slice(0, maxLines);
+                }
+
+                const candidate = current ? `${current} ${token}` : token;
+                if (candidate.length <= maxCharsPerLine) {
+                    current = candidate;
+                } else {
+                    if (current) lines.push(current);
+                    current = token;
+                }
+                if (lines.length >= maxLines) return lines.slice(0, maxLines);
+            }
+
+            if (current && lines.length < maxLines) lines.push(current);
+            const joined = lines.join(' ');
+            if (joined.length < text.length && lines.length) {
+                const last = lines[lines.length - 1];
+                if (!last.endsWith('…')) lines[lines.length - 1] = `${last.slice(0, Math.max(last.length - 1, 0))}…`;
+            }
+            return lines;
+        }
+
+        function renderCausalGraph(graph) {
+            const nodes = Array.isArray(graph.nodes) ? graph.nodes : [];
+            const edges = Array.isArray(graph.edges) ? graph.edges : [];
+            if (!nodes.length) {
+                return '<div class="trace-item">Graph is not available for this agent.</div>';
+            }
+
+            const layers = { root: [], agent: [], decision: [], action: [], outcome_ok: [], outcome_bad: [], other: [] };
+            nodes.forEach((node) => {
+                const g = String(node.group || 'other');
+                if (layers[g]) layers[g].push(node);
+                else layers.other.push(node);
+            });
+
+            const columns = ['root', 'agent', 'decision', 'action', 'outcome_ok', 'outcome_bad', 'other'];
+            const xStep = 244;
+            const yStep = 92;
+            const marginX = 40;
+            const marginY = 26;
+            const width = marginX * 2 + xStep * (columns.length - 1) + 230;
+            const maxRows = Math.max(...columns.map((c) => layers[c].length), 1);
+            const height = Math.max(420, marginY * 2 + yStep * maxRows + 120);
+
+            const positioned = {};
+            columns.forEach((col, colIndex) => {
+                layers[col].forEach((node, rowIndex) => {
+                    positioned[node.id] = { ...node, x: marginX + colIndex * xStep, y: marginY + rowIndex * yStep };
+                });
+            });
+
+            const edgeSvg = edges.map((edge) => {
+                const s = positioned[edge.source];
+                const t = positioned[edge.target];
+                if (!s || !t) return '';
+                const x1 = s.x + 196;
+                const y1 = s.y + 22;
+                const x2 = t.x;
+                const y2 = t.y + 22;
+                const mx = (x1 + x2) / 2;
+                const my = (y1 + y2) / 2;
+                const edgeLabel = String(edge.label || '');
+                const edgeShort = splitGraphLabel(edgeLabel, 16, 1)[0] || '';
+                return `
+                    <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#45608f" stroke-width="1.2" marker-end="url(#arrow)" />
+                    <text x="${mx}" y="${my - 4}" class="graph-edge-text">${esc(edgeShort)}</text>
+                    <title>${esc(edgeLabel)}</title>
+                `;
+            }).join('');
+
+            const nodeSvg = Object.values(positioned).map((node) => {
+                const fill = groupColor(node.group);
+                const fullLabel = String(node.label || '');
+                const lines = splitGraphLabel(fullLabel, 24, 2);
+                return `
+                    <g class="graph-node" data-node-id="${esc(node.id)}" style="cursor:pointer;">
+                        <rect x="${node.x}" y="${node.y}" width="196" height="54" rx="8" ry="8" fill="#16213d" stroke="${fill}" stroke-width="1.4"></rect>
+                        <text x="${node.x + 8}" y="${node.y + 17}" class="graph-node-text">${esc(lines[0] || '')}</text>
+                        <text x="${node.x + 8}" y="${node.y + 30}" class="graph-node-text">${esc(lines[1] || '')}</text>
+                        <text x="${node.x + 8}" y="${node.y + 46}" class="graph-edge-text">${esc(node.group || '')}</text>
+                        <title>${esc(fullLabel)}</title>
+                    </g>
+                `;
+            }).join('');
+
+            const detail = store.nodeDetails;
+            const detailHtml = detail ? `
+                <div class="trace-item">
+                    <div><span class="pill">Node</span>${esc(detail.node?.id || '')}</div>
+                    <div><strong>${esc(detail.node?.label || '')}</strong></div>
+                    <div class="small muted">${esc(JSON.stringify(detail.node?.meta || {}))}</div>
+                    <div class="small"><strong>Inbound:</strong> ${esc((detail.inbound_edges || []).map(e => `${e.source}→${e.target}`).join(' | ') || '—')}</div>
+                    <div class="small"><strong>Outbound:</strong> ${esc((detail.outbound_edges || []).map(e => `${e.source}→${e.target}`).join(' | ') || '—')}</div>
+                    ${detail.file_detail ? `<div class="small muted"><strong>File:</strong> ${esc(detail.file_detail.file || '')}<br><strong>Anchors:</strong> ${esc((detail.file_detail.matched_anchors || []).join(' · ') || '—')}</div>` : ''}
+                </div>
+            ` : '<div class="trace-item">Click a graph node to inspect deeper details (metadata, relations, source file).</div>';
+
+            return `
+                <div class="graph-wrap">
+                    ${detailHtml}
+                    <div class="small muted" style="margin-bottom:6px;">Pan: drag · Zoom: wheel · Reset: double-click</div>
+                    <div id="graph-stage" class="graph-stage">
+                        <svg id="graph-svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
+                            <defs>
+                                <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
+                                    <path d="M0,0 L8,4 L0,8 z" fill="#45608f" />
+                                </marker>
+                            </defs>
+                            <g id="graph-layer">${edgeSvg}${nodeSvg}</g>
+                        </svg>
+                    </div>
+                </div>
+            `;
+        }
+
+        function applyGraphTransform() {
+            const layer = document.getElementById('graph-layer');
+            if (!layer) return;
+            const v = store.graphViewport;
+            layer.setAttribute('transform', `translate(${v.tx} ${v.ty}) scale(${v.scale})`);
+        }
+
+        function shouldDeferDrilldownRefresh() {
+            if (store.activeTab !== 'graph') return false;
+            return (Date.now() - (store.graphInteractionTs || 0)) < 9000;
+        }
+
+        async function openNodeDetails(nodeId) {
+            if (!store.selectedAgent) return;
+            try {
+                const response = await fetch(`/drilldown/${encodeURIComponent(store.selectedAgent)}/node/${encodeURIComponent(nodeId)}`);
+                if (!response.ok) return;
+                store.nodeDetails = await response.json();
+                renderDrilldown();
+            } catch (error) {
+                console.error('node details error', error);
+            }
+        }
+
+        function initGraphViewport() {
+            const stage = document.getElementById('graph-stage');
+            const layer = document.getElementById('graph-layer');
+            if (!stage || !layer) return;
+            applyGraphTransform();
+
+            layer.querySelectorAll('.graph-node').forEach((node) => {
+                node.addEventListener('click', (ev) => {
+                    ev.stopPropagation();
+                    store.graphInteractionTs = Date.now();
+                    openNodeDetails(node.getAttribute('data-node-id'));
+                });
+            });
+
+            let dragging = false;
+            let lastX = 0;
+            let lastY = 0;
+
+            stage.onmousedown = (ev) => {
+                dragging = true;
+                stage.classList.add('dragging');
+                lastX = ev.clientX;
+                lastY = ev.clientY;
+                store.graphInteractionTs = Date.now();
+            };
+            window.onmouseup = () => {
+                dragging = false;
+                stage.classList.remove('dragging');
+            };
+            window.onmousemove = (ev) => {
+                if (!dragging) return;
+                const dx = ev.clientX - lastX;
+                const dy = ev.clientY - lastY;
+                lastX = ev.clientX;
+                lastY = ev.clientY;
+                store.graphViewport.tx += dx;
+                store.graphViewport.ty += dy;
+                store.graphInteractionTs = Date.now();
+                applyGraphTransform();
+            };
+            stage.onwheel = (ev) => {
+                ev.preventDefault();
+                const delta = ev.deltaY < 0 ? 1.08 : 0.92;
+                store.graphViewport.scale = Math.max(0.25, Math.min(3.4, store.graphViewport.scale * delta));
+                store.graphInteractionTs = Date.now();
+                applyGraphTransform();
+            };
+            stage.ondblclick = () => {
+                store.graphViewport = { scale: 1, tx: 0, ty: 0 };
+                store.graphInteractionTs = Date.now();
+                applyGraphTransform();
+            };
+        }
+
+        function renderKpiCron() {
+            const byAgent = store.insights?.cron?.by_agent || {};
+            let interrupted = 0;
+            Object.values(byAgent).forEach((jobs) => {
+                (jobs || []).forEach((job) => {
+                    if (job && job.interrupted) interrupted += 1;
+                });
+            });
+            document.getElementById('kpi-bad').textContent = String(interrupted);
+            document.getElementById('kpi-cron').textContent = String(store.insights?.cron?.summary?.active_jobs ?? 0);
+        }
+
+        function render() {
+            renderAgents();
+            renderInteractions();
+            renderKpiCron();
+            renderDrilldown();
+            if (store.overviewCurrent) {
+                const modal = document.getElementById('overview-modal');
+                if (modal && modal.classList.contains('open')) {
+                    const detail = renderOverviewDetail(store.overviewCurrent);
+                    document.getElementById('overview-title').textContent = detail.title;
+                    document.getElementById('overview-content').innerHTML = detail.html;
+                }
+            }
+            document.getElementById('last-refresh').textContent = `refresh: ${new Date().toLocaleTimeString()}`;
+        }
+
+        async function refreshInsights() {
+            try {
+                const response = await fetch('/insights');
+                if (!response.ok) return;
+                const payload = await response.json();
+                store.insights = payload;
+
+                const agents = Array.isArray(payload.agents) ? payload.agents : [];
+                agents.forEach((agent) => {
+                    if (agent && agent.agent) store.agents.set(agent.agent, agent);
+                });
+
+                if (!store.selectedAgent && agents.length > 0) {
+                    store.selectedAgent = agents[0].agent;
+                }
+                if (store.selectedAgent && !shouldDeferDrilldownRefresh()) {
+                    await openDrilldown(store.selectedAgent);
+                }
+                render();
+            } catch (error) {
+                console.error('insights error', error);
+            }
+        }
+
+        async function waitForReady(retries = 10, delay = 600) {
+            for (let i = 0; i < retries; i += 1) {
+                try {
+                    const response = await fetch('/ready');
+                    if (response.ok) {
+                        const payload = await response.json();
+                        if (payload && payload.ready) return true;
+                    }
+                } catch (error) {
+                }
+                await new Promise((resolve) => setTimeout(resolve, delay));
+                delay = Math.min(2000, Math.floor(delay * 1.45));
+            }
+            return false;
+        }
+
+        function bindSocketHandlers(socket) {
+            socket.on('init', (data) => {
+                if (!Array.isArray(data)) return;
+                data.forEach((row) => {
+                    if (row && row.agent) store.agents.set(row.agent, row);
+                });
+                render();
+            });
+
+            socket.on('update', (data) => {
+                if (!data || !data.agent) return;
+                store.agents.set(data.agent, data);
+                if (store.selectedAgent && String(store.selectedAgent) === String(data.agent) && !shouldDeferDrilldownRefresh()) {
+                    openDrilldown(store.selectedAgent);
+                }
+                render();
+            });
+
+            socket.on('init_pending', () => {
+                setTimeout(() => socket.emit('init_request'), 1200);
+            });
+        }
+
+        (async function bootstrap() {
+            renderMiniChartModeControls();
+            document.querySelectorAll('[data-chart-mode]').forEach((node) => {
+                node.addEventListener('click', () => setMiniChartMode(node.dataset.chartMode || 'line'));
+            });
+            document.querySelectorAll('.tab').forEach((node) => {
+                node.addEventListener('click', () => setTab(node.dataset.tab));
+            });
+            renderActiveTabHelp();
+            document.getElementById('open-docs-index').addEventListener('click', () => openDocsModal('INDEX.md'));
+            document.getElementById('close-docs').addEventListener('click', closeDocsModal);
+            document.getElementById('close-overview').addEventListener('click', closeOverviewModal);
+            document.querySelectorAll('.help-btn').forEach((node) => {
+                node.addEventListener('click', () => openDocsModal(node.dataset.doc || 'INDEX.md', node.dataset.docAnchor || null));
+            });
+            document.querySelectorAll('.kpi[data-overview]').forEach((node) => {
+                node.addEventListener('click', () => openOverviewModal(node.dataset.overview || 'agents'));
+                node.addEventListener('keydown', (event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        openOverviewModal(node.dataset.overview || 'agents');
+                    }
+                });
+            });
+            document.getElementById('docs-modal').addEventListener('click', (event) => {
+                if (event.target && event.target.id === 'docs-modal') closeDocsModal();
+            });
+            document.getElementById('overview-modal').addEventListener('click', (event) => {
+                if (event.target && event.target.id === 'overview-modal') closeOverviewModal();
+            });
+            document.getElementById('investigation-breadcrumb').addEventListener('click', async (event) => {
+                const node = event.target.closest('[data-bc-action]');
+                if (!node) return;
+                const action = node.getAttribute('data-bc-action') || '';
+                const value = node.getAttribute('data-bc-value') || '';
+                await handleBreadcrumbAction(action, value);
+            });
+            document.getElementById('investigation-breadcrumb').addEventListener('keydown', async (event) => {
+                if (event.key !== 'Enter' && event.key !== ' ') return;
+                const node = event.target.closest('[data-bc-action]');
+                if (!node) return;
+                event.preventDefault();
+                const action = node.getAttribute('data-bc-action') || '';
+                const value = node.getAttribute('data-bc-value') || '';
+                await handleBreadcrumbAction(action, value);
+            });
+            await waitForReady(10, 450);
+            const socket = io({ transports: ['websocket', 'polling'] });
+            bindSocketHandlers(socket);
+            await refreshInsights();
+            setInterval(refreshInsights, 3500);
+        })();
+    </script>
+</body>
+</html>
