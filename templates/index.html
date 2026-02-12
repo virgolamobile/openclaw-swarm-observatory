@@ -142,6 +142,8 @@
             border: 1px solid var(--border);
             border-radius: 10px;
             padding: 10px;
+            padding-bottom: 90px;
+            position: relative;
             cursor: pointer;
             transition: transform .12s ease, border-color .12s ease;
         }
@@ -209,31 +211,6 @@
             background: rgba(21,31,56,.5);
         }
 
-        .mini-chart-controls {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            margin-bottom: 10px;
-            flex-wrap: wrap;
-        }
-        .mini-chart-label {
-            color: #a9b7d9;
-            font-size: .74rem;
-        }
-        .mini-chart-toggle {
-            border: 1px solid #3f5483;
-            background: #13203c;
-            color: #cfe0ff;
-            border-radius: 999px;
-            padding: 3px 9px;
-            font-size: .72rem;
-            cursor: pointer;
-        }
-        .mini-chart-toggle.active {
-            border-color: #5b8cff;
-            background: #1a2d56;
-            color: #ffffff;
-        }
         .telemetry-check {
             margin: -4px 0 10px;
             font-size: .73rem;
@@ -246,41 +223,39 @@
             color: #ff9797;
         }
 
-        .mini-metrics {
-            margin-top: 7px;
-            padding-top: 6px;
-            border-top: 1px dashed rgba(255,255,255,.12);
-            display: grid;
-            gap: 8px;
-            grid-template-columns: 1fr 1fr;
+        .token-mini-widget {
+            position: absolute;
+            right: 9px;
+            bottom: 9px;
+            width: 84px;
+            border: 1px solid rgba(255,255,255,.12);
+            border-radius: 8px;
+            padding: 5px;
+            background: rgba(12, 22, 41, .88);
         }
-        .mini-metric {
-            display: block;
-            min-width: 0;
-        }
-        .mini-metric-label {
-            color: #a9b7d9;
-            font-size: .69rem;
-            letter-spacing: .2px;
-            text-transform: uppercase;
+        .token-mini-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
             margin-bottom: 3px;
         }
-        .mini-canvas {
+        .token-mini-label {
+            color: #a9b7d9;
+            font-size: .66rem;
+            letter-spacing: .2px;
+            text-transform: uppercase;
+        }
+        .token-mini-canvas {
             width: 100%;
-            height: 34px;
+            height: 52px;
             border-radius: 6px;
             border: 1px solid rgba(255,255,255,.08);
             background: linear-gradient(180deg, rgba(18,30,56,.6), rgba(12,22,41,.86));
         }
-        .mini-metric-value {
+        .token-mini-value {
             color: #d7e5ff;
             font-size: .7rem;
             text-align: right;
-        }
-        @media (max-width: 1020px) {
-            .mini-metrics {
-                grid-template-columns: 1fr;
-            }
         }
 
         .list {
@@ -759,11 +734,6 @@
                     <button class="help-btn" data-doc="03-ui-ux-guide.md" data-doc-anchor="03-ui-ux-guide.md-swarm-overview-section" title="Open section guide">?</button>
                 </h2>
                 <div id="selection-hint" class="selection-hint">1) Select an agent to unlock deep investigation and causal graph analysis.</div>
-                <div class="mini-chart-controls" id="mini-chart-controls">
-                    <span class="mini-chart-label">Mini charts mode:</span>
-                    <button class="mini-chart-toggle" id="mini-chart-line" data-chart-mode="line">Line</button>
-                    <button class="mini-chart-toggle" id="mini-chart-bars" data-chart-mode="bars">Bars</button>
-                </div>
                 <div id="telemetry-check" class="telemetry-check">Telemetry check: waiting for agent metrics…</div>
                 <div id="agent-grid"></div>
             </article>
@@ -854,7 +824,6 @@
             overviewDeepByAgent: {},
             overviewBacklink: null,
             agentTelemetryHistory: {},
-            telemetryChartMode: localStorage.getItem('miniChartMode') === 'bars' ? 'bars' : 'line',
         };
 
         // Escape helper for safe HTML interpolation.
@@ -893,42 +862,6 @@
             return String(value || 'unknown').toLowerCase().replace(/[^a-z0-9_-]+/g, '-');
         }
 
-        function parseMemoryMb(rawValue) {
-            if (rawValue == null) return null;
-            if (typeof rawValue === 'number' && Number.isFinite(rawValue)) return rawValue;
-            const text = String(rawValue).trim();
-            if (!text) return null;
-            const match = text.match(/([0-9]+(?:\.[0-9]+)?)\s*(kb|mb|gb|b)?/i);
-            if (!match) return null;
-            const val = Number(match[1]);
-            const unit = String(match[2] || 'mb').toLowerCase();
-            if (!Number.isFinite(val)) return null;
-            if (unit === 'gb') return val * 1024;
-            if (unit === 'kb') return val / 1024;
-            if (unit === 'b') return val / (1024 * 1024);
-            return val;
-        }
-
-        function extractMemoryMb(item) {
-            const candidates = [
-                item?.mem,
-                item?.memory,
-                item?.raw_core?.mem,
-                item?.raw_core?.memory,
-                item?.raw_core?.rss,
-                item?.raw?.mem,
-                item?.raw?.memory,
-                item?.raw?.rss,
-            ];
-            for (const rawValue of candidates) {
-                const parsed = parseMemoryMb(rawValue);
-                if (Number.isFinite(parsed)) return parsed;
-            }
-            const hostMem = Number(store.insights?.resource_probe?.ram_used_mb);
-            if (Number.isFinite(hostMem)) return hostMem;
-            return null;
-        }
-
         function parseTokenCount(item) {
             const rawCore = item?.raw_core || {};
             const raw = item?.raw || {};
@@ -956,62 +889,25 @@
             return null;
         }
 
+        function formatTokenCompact(value) {
+            if (!Number.isFinite(value)) return 'n/a';
+            if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
+            if (value >= 1000) return `${(value / 1000).toFixed(1)}k`;
+            return `${Math.round(value)}`;
+        }
+
         function pushAgentTelemetryPoint(item) {
             const agent = String(item?.agent || '').trim();
             if (!agent) return;
-            const memMb = extractMemoryMb(item);
             const tokens = parseTokenCount(item);
             const ts = Date.now();
             const key = safeDomKey(agent);
             const history = store.agentTelemetryHistory[key] || [];
             history.push({
                 ts,
-                memMb: Number.isFinite(memMb) ? memMb : null,
                 tokens: Number.isFinite(tokens) ? tokens : null,
             });
             store.agentTelemetryHistory[key] = history.slice(-48);
-        }
-
-        function drawMiniLine(canvasId, rows, pick, stroke) {
-            const canvas = document.getElementById(canvasId);
-            if (!canvas) return;
-            const width = canvas.width;
-            const height = canvas.height;
-            const ctx = canvas.getContext('2d');
-            if (!ctx) return;
-
-            ctx.clearRect(0, 0, width, height);
-            const vals = rows.map((r) => pick(r)).filter((v) => Number.isFinite(v));
-            if (!vals.length) {
-                ctx.strokeStyle = 'rgba(169,183,217,.35)';
-                ctx.lineWidth = 1;
-                ctx.beginPath();
-                ctx.moveTo(4, height - 4);
-                ctx.lineTo(width - 4, 4);
-                ctx.stroke();
-                return;
-            }
-
-            const min = Math.min(...vals);
-            const max = Math.max(...vals);
-            const range = Math.max(1, max - min);
-            const points = rows.map((row, idx) => {
-                const value = pick(row);
-                if (!Number.isFinite(value)) return null;
-                const x = 4 + (idx / Math.max(1, rows.length - 1)) * (width - 8);
-                const y = height - 4 - ((value - min) / range) * (height - 8);
-                return { x, y };
-            }).filter(Boolean);
-            if (!points.length) return;
-
-            ctx.strokeStyle = stroke;
-            ctx.lineWidth = 1.6;
-            ctx.beginPath();
-            points.forEach((p, i) => {
-                if (i === 0) ctx.moveTo(p.x, p.y);
-                else ctx.lineTo(p.x, p.y);
-            });
-            ctx.stroke();
         }
 
         function drawMiniBars(canvasId, rows, pick, color) {
@@ -1053,14 +949,6 @@
             ctx.globalAlpha = 1;
         }
 
-        function renderMiniChartModeControls() {
-            const mode = store.telemetryChartMode === 'bars' ? 'bars' : 'line';
-            const lineBtn = document.getElementById('mini-chart-line');
-            const barsBtn = document.getElementById('mini-chart-bars');
-            if (lineBtn) lineBtn.classList.toggle('active', mode === 'line');
-            if (barsBtn) barsBtn.classList.toggle('active', mode === 'bars');
-        }
-
         function renderTelemetryCheck(rows) {
             const node = document.getElementById('telemetry-check');
             if (!node) return;
@@ -1073,44 +961,38 @@
                 return;
             }
 
-            const memOk = Number(summary?.ram_numeric ?? rows.filter((r) => Number.isFinite(extractMemoryMb(r))).length) || 0;
             const tokOk = Number(summary?.tokens_numeric ?? rows.filter((r) => Number.isFinite(parseTokenCount(r))).length) || 0;
             const missingAgents = Array.isArray(report?.agents) ? report.agents : [];
-            const missingPreview = missingAgents.slice(0, 3).map((it) => String(it?.agent || '')).filter(Boolean).join(', ');
+            const missingPreview = missingAgents
+                .filter((it) => Array.isArray(it?.missing) && it.missing.includes('tokens'))
+                .slice(0, 3)
+                .map((it) => String(it?.agent || ''))
+                .filter(Boolean)
+                .join(', ');
 
-            if (memOk === 0 && tokOk === 0) {
+            if (tokOk === 0) {
                 node.className = 'telemetry-check bad';
-                node.textContent = `Telemetry check: no RAM/token fields found in live payload (${total} agents observed). Charts stay flat until source metrics arrive.${missingPreview ? ` Missing: ${missingPreview}.` : ''}`;
+                node.textContent = `Telemetry check: no token fields found in live payload (${total} agents observed). Token chart stays flat until source metrics arrive.${missingPreview ? ` Missing: ${missingPreview}.` : ''}`;
                 return;
             }
 
-            if (memOk < total || tokOk < total) {
+            if (tokOk < total) {
                 node.className = 'telemetry-check warn';
-                node.textContent = `Telemetry check: RAM ${memOk}/${total}, Tokens ${tokOk}/${total} agents with numeric data.${missingPreview ? ` Missing: ${missingPreview}.` : ''}`;
+                node.textContent = `Telemetry check: Tok ${tokOk}/${total} agents with numeric data.${missingPreview ? ` Missing: ${missingPreview}.` : ''}`;
                 return;
             }
 
             node.className = 'telemetry-check';
-            node.textContent = `Telemetry check: RAM ${memOk}/${total}, Tokens ${tokOk}/${total} (stream healthy).`;
-        }
-
-        function setMiniChartMode(mode) {
-            const next = mode === 'bars' ? 'bars' : 'line';
-            store.telemetryChartMode = next;
-            localStorage.setItem('miniChartMode', next);
-            renderMiniChartModeControls();
-            render();
+            node.textContent = `Telemetry check: Tok ${tokOk}/${total} (stream healthy).`;
         }
 
         function renderAgentTelemetryCharts(rows) {
             rows.forEach((item) => pushAgentTelemetryPoint(item));
             requestAnimationFrame(() => {
-                const draw = store.telemetryChartMode === 'bars' ? drawMiniBars : drawMiniLine;
                 rows.forEach((item) => {
                     const key = safeDomKey(item.agent);
                     const history = store.agentTelemetryHistory[key] || [];
-                    draw(`mini-mem-${key}`, history, (r) => r.memMb, '#5b8cff');
-                    draw(`mini-tok-${key}`, history, (r) => r.tokens, '#16c784');
+                    drawMiniBars(`mini-tok-${key}`, history, (r) => r.tokens, '#16c784');
                 });
             });
         }
@@ -1771,7 +1653,6 @@
             const interrupted = Array.isArray(item.interrupted_tasks) ? item.interrupted_tasks.length : 0;
             const selectedClass = String(store.selectedAgent || '') === String(item.agent || '') ? 'selected' : '';
             const key = safeDomKey(item.agent);
-            const memVal = extractMemoryMb(item);
             const tokVal = parseTokenCount(item);
             const hostCpu = Number(store.insights?.resource_probe?.cpu_percent);
             const hostGpu = Number(store.insights?.resource_probe?.gpu_util_percent);
@@ -1789,21 +1670,13 @@
                     <div class="kv"><span class="muted">Missions:</span> ${esc(missions)}</div>
                     <div class="kv"><span class="muted">Last event:</span> ${esc(item.last_seen || '—')}</div>
                     <div class="kv"><span class="muted">Host CPU/GPU:</span> ${esc(hostCpuText)} / ${esc(hostGpuText)}</div>
-                    <div class="mini-metrics">
-                        <div class="mini-metric">
-                            <div class="mini-metric-label">RAM</div>
-                            <div>
-                                <canvas class="mini-canvas" id="mini-mem-${esc(key)}" width="220" height="34"></canvas>
-                                <div class="mini-metric-value">${Number.isFinite(memVal) ? `${memVal.toFixed(1)} MB` : 'n/a'}</div>
-                            </div>
+                    <div class="token-mini-widget">
+                        <div class="token-mini-head">
+                            <span class="token-mini-label">Tok</span>
+                            <button class="help-btn micro" data-doc="03-ui-ux-guide.md" data-doc-anchor="03-ui-ux-guide.md-token-mini-chart-openclaw" title="How token metric works in OpenClaw">?</button>
                         </div>
-                        <div class="mini-metric">
-                            <div class="mini-metric-label">TOKENS</div>
-                            <div>
-                                <canvas class="mini-canvas" id="mini-tok-${esc(key)}" width="220" height="34"></canvas>
-                                <div class="mini-metric-value">${Number.isFinite(tokVal) ? Math.round(tokVal).toLocaleString() : 'n/a'}</div>
-                            </div>
-                        </div>
+                        <canvas class="token-mini-canvas" id="mini-tok-${esc(key)}" width="74" height="52"></canvas>
+                        <div class="token-mini-value">${formatTokenCompact(tokVal)}</div>
                     </div>
                 </article>
             `;
@@ -2305,10 +2178,6 @@
         }
 
         (async function bootstrap() {
-            renderMiniChartModeControls();
-            document.querySelectorAll('[data-chart-mode]').forEach((node) => {
-                node.addEventListener('click', () => setMiniChartMode(node.dataset.chartMode || 'line'));
-            });
             document.querySelectorAll('.tab').forEach((node) => {
                 node.addEventListener('click', () => setTab(node.dataset.tab));
             });

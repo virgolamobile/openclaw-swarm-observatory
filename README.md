@@ -156,7 +156,4 @@ This repository is licensed under **PolyForm Noncommercial 1.0.0**.
 - Commercial use is not permitted without separate permission.
 - See `LICENSE` for full legal terms.
 
-## Personal branding usage
-
-You can publicly showcase this project in your portfolio/GitHub profile.
 For commercial licensing, contact the project owner directly.

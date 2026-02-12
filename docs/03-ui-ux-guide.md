@@ -44,6 +44,26 @@ Interpretation hints:
 - `Observed` with stale last event: likely waiting state.
 - `Attention` and non-ok tasks: prioritize this card first.
 
+## Token mini chart openclaw
+
+Each swarm card includes a small **Tok** mini-chart in the bottom-right corner.
+
+How to read it:
+
+- Bars show the recent progression of total token usage for that agent.
+- The numeric value under the chart is abbreviated (`k`, `M`) for quick scanning.
+- A flat or empty chart means no numeric token telemetry is currently available for that agent.
+
+Where token data comes from:
+
+- OpenClaw `status` payload (`sessions.recent.totalTokens`) is the primary source.
+- Fallback parsing also checks token hints in recent messages when present.
+
+Important limitation:
+
+- Token telemetry depends on what OpenClaw exposes at runtime.
+- If OpenClaw does not provide token fields for an agent, the chart remains empty by design.
+
 ## Global streams section
 
 Global Streams aggregate conversation-like signals across the swarm.
