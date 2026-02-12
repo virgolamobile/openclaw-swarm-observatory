@@ -142,10 +142,25 @@
             border: 1px solid var(--border);
             border-radius: 10px;
             padding: 10px;
-            padding-bottom: 90px;
-            position: relative;
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 94px;
+            column-gap: 10px;
+            align-items: start;
             cursor: pointer;
             transition: transform .12s ease, border-color .12s ease;
+        }
+        .agent-main {
+            min-width: 0;
+        }
+        .agent-side {
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+            gap: 6px;
+            min-width: 0;
+        }
+        .agent-side .chip.live {
+            align-self: flex-end;
         }
         .agent-card:hover { transform: translateY(-1px); border-color: #4b6192; }
         .agent-card.selected { border-color: #5b8cff; box-shadow: inset 0 0 0 1px rgba(91,140,255,.35); }
@@ -224,14 +239,12 @@
         }
 
         .token-mini-widget {
-            position: absolute;
-            right: 9px;
-            bottom: 9px;
-            width: 84px;
+            width: 100%;
             border: 1px solid rgba(255,255,255,.12);
             border-radius: 8px;
             padding: 5px;
             background: rgba(12, 22, 41, .88);
+            margin-top: 12px;
         }
         .token-mini-head {
             display: flex;
@@ -247,7 +260,7 @@
         }
         .token-mini-canvas {
             width: 100%;
-            height: 52px;
+            height: 64px;
             border-radius: 6px;
             border: 1px solid rgba(255,255,255,.08);
             background: linear-gradient(180deg, rgba(18,30,56,.6), rgba(12,22,41,.86));
@@ -256,6 +269,11 @@
             color: #d7e5ff;
             font-size: .7rem;
             text-align: right;
+        }
+        @media (max-width: 980px) {
+            .agent-card {
+                grid-template-columns: minmax(0, 1fr) 88px;
+            }
         }
 
         .list {
@@ -1654,29 +1672,28 @@
             const selectedClass = String(store.selectedAgent || '') === String(item.agent || '') ? 'selected' : '';
             const key = safeDomKey(item.agent);
             const tokVal = parseTokenCount(item);
-            const hostCpu = Number(store.insights?.resource_probe?.cpu_percent);
-            const hostGpu = Number(store.insights?.resource_probe?.gpu_util_percent);
-            const hostCpuText = Number.isFinite(hostCpu) ? `${hostCpu.toFixed(1)}%` : 'n/a';
-            const hostGpuText = Number.isFinite(hostGpu) ? `${hostGpu.toFixed(1)}%` : 'n/a';
             return `
                 <article class="agent-card ${selectedClass}" onclick="openDrilldown('${esc(item.agent)}')">
-                    <div class="agent-top">
-                        ${agentBadge(item.agent)}
-                        <span class="chip live">● live</span>
-                    </div>
-                    <div class="kv"><span class="muted">Status:</span> <span class="${statusClass(item.status)}">${esc(item.status || 'unknown')}</span></div>
-                    <div class="kv"><span class="muted">Task:</span> ${esc(item.task || '—')}</div>
-                    <div class="kv"><span class="muted">Cron:</span> ${esc(item.cron_jobs ?? 0)} ${interrupted ? `<span class="chip bad">${interrupted} non-ok</span>` : ''}</div>
-                    <div class="kv"><span class="muted">Missions:</span> ${esc(missions)}</div>
-                    <div class="kv"><span class="muted">Last event:</span> ${esc(item.last_seen || '—')}</div>
-                    <div class="kv"><span class="muted">Host CPU/GPU:</span> ${esc(hostCpuText)} / ${esc(hostGpuText)}</div>
-                    <div class="token-mini-widget">
-                        <div class="token-mini-head">
-                            <span class="token-mini-label">Tok</span>
-                            <button class="help-btn micro" data-doc="03-ui-ux-guide.md" data-doc-anchor="03-ui-ux-guide.md-token-mini-chart-openclaw" title="How token metric works in OpenClaw">?</button>
+                    <div class="agent-main">
+                        <div class="agent-top">
+                            ${agentBadge(item.agent)}
                         </div>
-                        <canvas class="token-mini-canvas" id="mini-tok-${esc(key)}" width="74" height="52"></canvas>
-                        <div class="token-mini-value">${formatTokenCompact(tokVal)}</div>
+                        <div class="kv"><span class="muted">Status:</span> <span class="${statusClass(item.status)}">${esc(item.status || 'unknown')}</span></div>
+                        <div class="kv"><span class="muted">Task:</span> ${esc(item.task || '—')}</div>
+                        <div class="kv"><span class="muted">Cron:</span> ${esc(item.cron_jobs ?? 0)} ${interrupted ? `<span class="chip bad">${interrupted} non-ok</span>` : ''}</div>
+                        <div class="kv"><span class="muted">Missions:</span> ${esc(missions)}</div>
+                        <div class="kv"><span class="muted">Last event:</span> ${esc(item.last_seen || '—')}</div>
+                    </div>
+                    <div class="agent-side">
+                        <span class="chip live">● live</span>
+                        <div class="token-mini-widget">
+                            <div class="token-mini-head">
+                                <span class="token-mini-label">Tok</span>
+                                <button class="help-btn micro" data-doc="03-ui-ux-guide.md" data-doc-anchor="03-ui-ux-guide.md-token-mini-chart-openclaw" title="How token metric works in OpenClaw">?</button>
+                            </div>
+                            <canvas class="token-mini-canvas" id="mini-tok-${esc(key)}" width="92" height="64"></canvas>
+                            <div class="token-mini-value">${formatTokenCompact(tokVal)}</div>
+                        </div>
                     </div>
                 </article>
             `;
