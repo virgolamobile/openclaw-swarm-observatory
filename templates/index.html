@@ -696,7 +696,7 @@
             transition: filter .45s ease, stroke-width .45s ease, opacity .45s ease, stroke .45s ease;
         }
         .graph-node.live .graph-node-rect {
-            animation: graphPulseNode 1.6s ease-in-out infinite;
+            animation: graphPulseNode 1.15s ease-in-out infinite;
         }
         .graph-node.weight-up .graph-node-rect {
             animation: graphWeightUp 1.1s ease;
@@ -705,8 +705,11 @@
             animation: graphWeightDown 1.1s ease;
         }
         .graph-node.trigger-source .graph-node-rect {
-            animation: graphTriggerGlow 1.15s ease-in-out infinite;
+            animation: graphTriggerGlow 0.9s ease-in-out infinite, graphImpactBorder 1.1s linear infinite;
             stroke: #ffe08a;
+        }
+        .graph-node.impact .graph-node-rect {
+            animation: graphImpactBorder 1.25s linear infinite;
         }
         .graph-node.selected .graph-node-rect {
             filter: drop-shadow(0 0 7px rgba(91,140,255,.65));
@@ -717,7 +720,14 @@
             opacity: .72;
         }
         .graph-edge.live .graph-edge-line {
-            animation: graphPulseEdge 1.2s ease-in-out infinite;
+            animation: graphPulseEdge 0.95s ease-in-out infinite, graphDataFlow 1.15s linear infinite;
+            stroke-dasharray: 8 6;
+        }
+        .graph-edge.trigger-flow .graph-edge-line {
+            animation: graphPulseEdge 0.7s ease-in-out infinite, graphDataFlow 0.58s linear infinite;
+            stroke: #b9d2ff;
+            stroke-dasharray: 11 6;
+            opacity: 1;
         }
         .graph-edge.selected .graph-edge-line {
             stroke: #8db0ff;
@@ -726,7 +736,7 @@
         }
         @keyframes graphPulseNode {
             0%, 100% { filter: drop-shadow(0 0 0 rgba(22,199,132,.0)); }
-            50% { filter: drop-shadow(0 0 9px rgba(22,199,132,.45)); }
+            50% { filter: drop-shadow(0 0 14px rgba(22,199,132,.68)); }
         }
         @keyframes graphWeightUp {
             0% { filter: brightness(1); }
@@ -740,11 +750,29 @@
         }
         @keyframes graphTriggerGlow {
             0%, 100% { filter: drop-shadow(0 0 0 rgba(255,208,96,.0)); }
-            50% { filter: drop-shadow(0 0 12px rgba(255,208,96,.62)); }
+            50% { filter: drop-shadow(0 0 16px rgba(255,208,96,.85)); }
         }
         @keyframes graphPulseEdge {
-            0%, 100% { opacity: .68; }
+            0%, 100% { opacity: .72; }
             50% { opacity: 1; }
+        }
+        @keyframes graphDataFlow {
+            from { stroke-dashoffset: 0; }
+            to { stroke-dashoffset: -56; }
+        }
+        @keyframes graphImpactBorder {
+            0% {
+                stroke-width: 2;
+                filter: drop-shadow(0 0 0 rgba(255,208,96,0));
+            }
+            50% {
+                stroke-width: 3.2;
+                filter: drop-shadow(0 0 11px rgba(255,208,96,.72));
+            }
+            100% {
+                stroke-width: 2;
+                filter: drop-shadow(0 0 0 rgba(255,208,96,0));
+            }
         }
         .graph-actions {
             display: flex;
@@ -3534,6 +3562,11 @@
             const selectedNodeId = String(store.nodeDetails?.node?.id || '');
             const previousWeights = store.graphNodeWeights[prefix] || {};
             const nextWeights = {};
+            const triggerNodeIds = new Set(
+                nodes
+                    .filter((node) => Boolean(node?.meta?.trigger_source))
+                    .map((node) => String(node?.id || ''))
+            );
 
             const nodeWeight = (node) => {
                 const raw = Number(node?.meta?.weight);
@@ -3594,7 +3627,8 @@
                 const edgeShort = splitGraphLabel(edgeLabel, 16, 1)[0] || '';
                 const isLive = Boolean(edge?.meta?.live);
                 const isSelected = selectedNodeId && (String(edge.source || '') === selectedNodeId || String(edge.target || '') === selectedNodeId);
-                const edgeClass = `graph-edge ${isLive ? 'live' : ''} ${isSelected ? 'selected' : ''}`;
+                const isTriggerFlow = triggerNodeIds.has(String(edge.source || '')) || triggerNodeIds.has(String(edge.target || ''));
+                const edgeClass = `graph-edge ${isLive ? 'live' : ''} ${isSelected ? 'selected' : ''} ${isTriggerFlow ? 'trigger-flow' : ''}`;
                 const strokeWidth = (1 + (edgeWeight(edge) * 0.9)).toFixed(2);
                 return `
                     <g class="${edgeClass}">
@@ -3616,7 +3650,8 @@
                 const isLive = Boolean(node?.meta?.live);
                 const isTriggerSource = Boolean(node?.meta?.trigger_source);
                 const isSelected = selectedNodeId && String(node.id || '') === selectedNodeId;
-                const nodeClass = `graph-node ${isLive ? 'live' : ''} ${isSelected ? 'selected' : ''} ${isTriggerSource ? 'trigger-source' : ''} ${weightDelta > 0.03 ? 'weight-up' : ''} ${weightDelta < -0.03 ? 'weight-down' : ''}`;
+                const isImpact = isTriggerSource || isSelected || isLive;
+                const nodeClass = `graph-node ${isLive ? 'live' : ''} ${isSelected ? 'selected' : ''} ${isTriggerSource ? 'trigger-source' : ''} ${isImpact ? 'impact' : ''} ${weightDelta > 0.03 ? 'weight-up' : ''} ${weightDelta < -0.03 ? 'weight-down' : ''}`;
                 const nodeStrokeWidth = (1.25 + (weight * 0.7)).toFixed(2);
                 const weightLabel = `w:${weight.toFixed(2)}`;
                 return `
