@@ -173,6 +173,7 @@
             color: var(--muted);
         }
         .chip.live { color: var(--good); border-color: rgba(22,199,132,.4); }
+        .chip.warn { color: var(--warn); border-color: rgba(245,158,11,.45); }
         .chip.bad { color: var(--bad); border-color: rgba(239,68,68,.45); }
         .kv { margin: 5px 0; font-size: .82rem; color: #c7d4f6; }
         .muted { color: var(--muted); }
@@ -916,6 +917,56 @@
                 if (m) return Number(m[1]);
             }
             return null;
+        }
+
+        function parseTimestampMs(value) {
+            if (value == null) return null;
+            const num = Number(value);
+            if (Number.isFinite(num)) {
+                if (num > 1e12) return num;
+                if (num > 1e9) return num * 1000;
+            }
+
+            const text = String(value || '').trim();
+            if (!text) return null;
+            const parsed = Date.parse(text);
+            if (Number.isFinite(parsed)) return parsed;
+
+            const m = text.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+            if (!m) return null;
+            const now = new Date();
+            const hh = Number(m[1]);
+            const mm = Number(m[2]);
+            const ss = Number(m[3] || 0);
+            const candidate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hh, mm, ss, 0).getTime();
+            return Number.isFinite(candidate) ? candidate : null;
+        }
+
+        function getAgentFreshness(item) {
+            const rawCandidates = [
+                item?.last_seen_ts,
+                item?.last_seen,
+                item?.raw_core?.last_seen,
+                item?.raw?.last_seen,
+            ];
+            let ts = null;
+            for (const candidate of rawCandidates) {
+                ts = parseTimestampMs(candidate);
+                if (Number.isFinite(ts)) break;
+            }
+
+            if (!Number.isFinite(ts)) {
+                return { className: 'bad', label: 'unknown', bucket: 'unknown', title: 'No valid heartbeat timestamp' };
+            }
+
+            const ageSec = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+            if (ageSec <= 40) {
+                return { className: 'live', label: 'live', bucket: 'live', title: `Heartbeat ${ageSec}s ago` };
+            }
+            if (ageSec <= 180) {
+                return { className: 'warn', label: 'delayed', bucket: 'delayed', title: `Heartbeat ${ageSec}s ago` };
+            }
+            return { className: 'bad', label: 'stale', bucket: 'stale', title: `Heartbeat ${ageSec}s ago` };
         }
 
         function formatTokenCompact(value) {
@@ -1676,6 +1727,7 @@
             const interrupted = Array.isArray(item.interrupted_tasks) ? item.interrupted_tasks.length : 0;
             const key = safeDomKey(item.agent);
             const tokVal = parseTokenCount(item);
+            const freshness = getAgentFreshness(item);
             return `
                 <div class="agent-main">
                     <div class="agent-top">
@@ -1688,7 +1740,7 @@
                     <div class="kv"><span class="muted">Last event:</span> ${esc(item.last_seen || '—')}</div>
                 </div>
                 <div class="agent-side">
-                    <span class="chip live">● live</span>
+                    <span class="chip ${freshness.className}" title="${esc(freshness.title)}">● ${esc(freshness.label)}</span>
                     <div class="token-mini-widget">
                         <div class="token-mini-head">
                             <span class="token-mini-label">Tok</span>
@@ -1753,6 +1805,7 @@
             const interrupted = Array.isArray(item?.interrupted_tasks) ? item.interrupted_tasks.length : 0;
             const tokVal = parseTokenCount(item);
             const selected = String(store.selectedAgent || '') === String(item?.agent || '');
+            const freshness = getAgentFreshness(item);
             return [
                 item?.agent || '',
                 item?.status || '',
@@ -1761,6 +1814,7 @@
                 interrupted,
                 item?.last_seen || '',
                 formatTokenCompact(tokVal),
+                freshness.bucket,
                 selected ? 1 : 0,
             ].join('|');
         }
