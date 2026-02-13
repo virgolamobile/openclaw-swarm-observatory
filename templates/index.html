@@ -238,6 +238,18 @@
         }
         .agent-card:hover { transform: translateY(-1px); border-color: #4b6192; }
         .agent-card.selected { border-color: #5b8cff; box-shadow: inset 0 0 0 1px rgba(91,140,255,.35); }
+        .agent-card.loading {
+            border-color: #7aa3ff;
+            box-shadow: inset 0 0 0 1px rgba(122,163,255,.48), 0 0 0 2px rgba(122,163,255,.12);
+        }
+        .agent-card.loading .agent-badge::before {
+            animation: selected-loading-pulse .9s ease-in-out infinite;
+        }
+        @keyframes selected-loading-pulse {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.35); opacity: .75; }
+            100% { transform: scale(1); opacity: 1; }
+        }
         .agent-top { display:flex; justify-content:space-between; align-items:center; }
         .chip {
             border: 1px solid var(--border);
@@ -957,6 +969,10 @@
             insights: null,
             selectedAgent: null,
             drilldown: null,
+            drilldownByAgent: new Map(),
+            drilldownCacheTtlMs: 12000,
+            drilldownLoadingAgent: null,
+            drilldownAbortController: null,
             activeTab: 'decisions',
             graphViewport: { scale: 1, tx: 0, ty: 0 },
             graphInteractionTs: 0,
@@ -1956,29 +1972,64 @@
             renderDocsMenu();
         }
 
-        async function openDrilldown(agentName) {
+        async function openDrilldown(agentName, options = {}) {
+            const background = Boolean(options.background);
             store.selectedAgent = agentName;
             store.nodeDetails = null;
+            const selectedBefore = store.drilldown?.agent || '';
+            const cacheEntry = store.drilldownByAgent.get(agentName);
+            const hasFreshCache = Boolean(cacheEntry && (Date.now() - Number(cacheEntry.ts || 0)) <= store.drilldownCacheTtlMs);
+
+            if (hasFreshCache) {
+                store.drilldown = cacheEntry.payload;
+            }
+
+            store.drilldownLoadingAgent = background ? null : agentName;
+            scheduleRender({ agents: true, drilldown: true, refresh: true });
+
+            if (store.drilldownAbortController) {
+                try {
+                    store.drilldownAbortController.abort();
+                } catch (error) {
+                }
+            }
+
             const requestSeq = (store.drilldownRequestSeq || 0) + 1;
             store.drilldownRequestSeq = requestSeq;
+            const controller = new AbortController();
+            store.drilldownAbortController = controller;
             try {
-                const response = await fetch(`/drilldown/${encodeURIComponent(agentName)}`);
+                const response = await fetch(`/drilldown/${encodeURIComponent(agentName)}`, { signal: controller.signal });
                 if (requestSeq !== store.drilldownRequestSeq) return;
                 if (!response.ok) {
-                    store.drilldown = null;
+                    if (!hasFreshCache) store.drilldown = null;
+                    store.drilldownLoadingAgent = null;
                     scheduleRender({ drilldown: true, refresh: true });
                     return;
                 }
-                store.drilldown = await response.json();
+                const payload = await response.json();
                 if (requestSeq !== store.drilldownRequestSeq) return;
+                store.drilldown = payload;
+                store.drilldownByAgent.set(agentName, { payload, ts: Date.now() });
+                store.drilldownLoadingAgent = null;
                 scheduleRender({ drilldown: true, refresh: true });
             } catch (error) {
+                if (error && error.name === 'AbortError') return;
                 console.error('drilldown error', error);
+                if (!hasFreshCache && selectedBefore !== agentName) {
+                    store.drilldown = null;
+                }
+                store.drilldownLoadingAgent = null;
+                scheduleRender({ agents: true, drilldown: true, refresh: true });
+            } finally {
+                if (store.drilldownAbortController === controller) {
+                    store.drilldownAbortController = null;
+                }
             }
         }
         window.openDrilldown = openDrilldown;
 
-        function renderAgentCardBody(item) {
+        function renderAgentCardBody(item, loading = false) {
             const missions = Array.isArray(item.active_missions) && item.active_missions.length ? item.active_missions.join(', ') : '—';
             const interrupted = Array.isArray(item.interrupted_tasks) ? item.interrupted_tasks.length : 0;
             const key = safeDomKey(item.agent);
@@ -1996,6 +2047,7 @@
                     <div class="kv"><span class="muted">Last event:</span> ${esc(item.last_seen || '—')}</div>
                 </div>
                 <div class="agent-side">
+                    ${loading ? '<span class="chip warn">loading…</span>' : ''}
                     <span class="chip live-indicator ${freshness.className}" title="${esc(freshness.title)}">${esc(freshness.label)}</span>
                     <div class="token-mini-widget">
                         <div class="token-mini-head">
@@ -2014,6 +2066,7 @@
                 super();
                 this._item = null;
                 this._selected = false;
+                this._loading = false;
                 this._bound = false;
             }
 
@@ -2044,12 +2097,25 @@
                 this.render();
             }
 
+            get selected() {
+                return this._selected;
+            }
+
+            set loading(value) {
+                this._loading = Boolean(value);
+                this.render();
+            }
+
+            get loading() {
+                return this._loading;
+            }
+
             render() {
                 if (!this._item) return;
-                this.className = `agent-card ${this._selected ? 'selected' : ''}`;
+                this.className = `agent-card ${this._selected ? 'selected' : ''} ${this._loading ? 'loading' : ''}`;
                 this.setAttribute('data-agent-key', safeDomKey(this._item.agent));
                 this.setAttribute('data-agent-name', String(this._item.agent || ''));
-                this.innerHTML = renderAgentCardBody(this._item);
+                this.innerHTML = renderAgentCardBody(this._item, this._loading);
                 markContentUpdate(this);
             }
         }
@@ -2101,14 +2167,17 @@
                 const prevSignature = renderState.agentSignatures.get(key);
                 let node = existing.get(key);
                 const selected = String(store.selectedAgent || '') === String(item.agent || '');
+                const loading = selected && String(store.drilldownLoadingAgent || '') === String(item.agent || '');
 
                 if (!node || signature !== prevSignature) {
                     if (!node) node = document.createElement('openclaw-agent-card');
                     node.item = item;
                     node.selected = selected;
+                    node.loading = loading;
                     renderState.agentSignatures.set(key, signature);
-                } else if (node.selected !== selected) {
+                } else if (node.selected !== selected || node.loading !== loading) {
                     node.selected = selected;
+                    node.loading = loading;
                 }
                 if (node) fragment.appendChild(node);
                 nextKeys.add(key);
@@ -2158,6 +2227,7 @@
             const selectedLabel = document.getElementById('selected-agent-label');
             const breadcrumb = document.getElementById('investigation-breadcrumb');
             const payload = store.drilldown;
+            const loading = Boolean(store.drilldownLoadingAgent && String(store.selectedAgent || '') === String(store.drilldownLoadingAgent || ''));
 
             const depth = payload?.depth || {};
             const signature = [
@@ -2185,6 +2255,17 @@
                 timeline: 'Full timeline',
                 overview: 'Overview',
             };
+
+            if (loading && (!payload || String(payload.agent || '') !== String(store.selectedAgent || ''))) {
+                const target = store.selectedAgent || 'agent';
+                title.textContent = `Deep investigation (${target})`;
+                selectedLabel.innerHTML = `Current agent: ${agentBadge(target, true)}`;
+                if (breadcrumb) {
+                    breadcrumb.innerHTML = `Path: ${renderBreadcrumbCrumb({ label: 'Swarm', action: 'swarm', strong: true }, false)}<span class="sep">›</span>${renderBreadcrumbCrumb({ label: String(target), action: 'agent', value: String(target), strong: true }, true)}`;
+                }
+                body.innerHTML = '<div class="trace-item">Loading drilldown content…</div>';
+                return;
+            }
 
             if (!payload || !payload.found) {
                 title.textContent = 'Deep investigation (select an agent)';
@@ -2636,7 +2717,7 @@
                     store.selectedAgent = agents[0].agent;
                 }
                 if (store.selectedAgent && !shouldDeferDrilldownRefresh()) {
-                    await openDrilldown(store.selectedAgent);
+                    await openDrilldown(store.selectedAgent, { background: true });
                 }
                 scheduleRender({
                     agents: true,
@@ -2689,7 +2770,7 @@
                 if (!data || !data.agent) return;
                 store.agents.set(data.agent, data);
                 if (store.selectedAgent && String(store.selectedAgent) === String(data.agent) && !shouldDeferDrilldownRefresh()) {
-                    openDrilldown(store.selectedAgent);
+                    openDrilldown(store.selectedAgent, { background: true });
                 }
                 scheduleRender({ agents: true, refresh: true });
             });
