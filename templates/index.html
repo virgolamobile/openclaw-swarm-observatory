@@ -620,6 +620,15 @@
             box-shadow: inset 0 0 0 1px rgba(91,140,255,.32);
             background: #16284d;
         }
+        .trace-item.jump-target {
+            animation: jumpTargetPulse 1.6s ease-in-out 2;
+            border-color: #8db0ff;
+            box-shadow: 0 0 0 1px rgba(141,176,255,.45), 0 0 14px rgba(91,140,255,.35);
+        }
+        @keyframes jumpTargetPulse {
+            0%, 100% { background: #16284d; }
+            50% { background: #213c71; }
+        }
         .backlink-banner {
             border: 1px solid rgba(91,140,255,.45);
             border-radius: 8px;
@@ -3241,8 +3250,9 @@
                 body.innerHTML = rows.length ? rows.map((row, idx) => {
                     const absoluteIndex = start + idx;
                     const linked = graphJump && graphJump.tab === 'cron_timeline' && Number(graphJump.actionIndex) === Number(absoluteIndex) ? 'linked' : '';
+                    const jumpMark = linked ? 'data-graph-jump-target="1"' : '';
                     return `
-                    <div class="trace-item ${linked}">
+                    <div class="trace-item ${linked}" ${jumpMark}>
                         <div><span class="pill">${esc(row.kind || 'event')}</span><span class="pill">${esc(row.job || 'cron')}</span><span class="pill ${statusClass(row.status)}">${esc(row.status || '')}</span></div>
                         <div>${esc(row.summary || '—')}</div>
                         <div class="small">${row.in_seconds != null ? `in ${esc(row.in_seconds)}s` : ''} ${row.duration_ms ? `· duration ${esc(row.duration_ms)}ms` : ''}</div>
@@ -3250,6 +3260,7 @@
                     </div>
                 `;
                 }).join('') : 'No cron timeline available.';
+                focusGraphJumpTarget(body);
                 return;
             }
 
@@ -3258,14 +3269,16 @@
                 const graphJump = store.graphJump;
                 body.innerHTML = roots.length ? roots.map((row, idx) => {
                     const linked = graphJump && graphJump.tab === 'soul' && Number(graphJump.rootIndex) === Number(idx) ? 'linked' : '';
+                    const jumpMark = linked ? 'data-graph-jump-target="1"' : '';
                     return `
-                    <div class="trace-item ${linked}">
+                    <div class="trace-item ${linked}" ${jumpMark}>
                         <div><span class="pill">root file</span>${esc(row.file || '')}</div>
                         <div class="small"><strong>Anchor matches:</strong> ${esc((row.matched_anchors || []).join(' · ') || 'none')}</div>
                         <div class="small muted">${esc((row.anchors || []).slice(0, 6).join(' | '))}</div>
                     </div>
                 `;
                 }).join('') : 'No context files available for this agent.';
+                focusGraphJumpTarget(body);
                 return;
             }
 
@@ -3333,6 +3346,7 @@
                 const linkedGraph = graphJump && graphJump.tab === 'decisions' && Number(graphJump.decisionIndex) === Number(entry.originalIndex);
                 const linkedOverview = showBacklink && Number(backlink.decisionIndex) === Number(entry.originalIndex);
                 const linked = (linkedOverview || linkedGraph) ? 'linked' : '';
+                const jumpMark = linkedGraph ? 'data-graph-jump-target="1"' : '';
                 const alt = (idx % 2 === 1) ? 'alt' : '';
                 const ts = formatDecisionTime(row.ts, entry.tsMs);
                 const whyBlock = renderCollapsibleTraceList('Why', row.why || [], { previewLimit: 2, open: linked });
@@ -3340,7 +3354,7 @@
                 const rootCauseBlock = renderCollapsibleTraceList('Root causes (SOUL/files)', formatRootCauseItems(row.root_causes), { previewLimit: 1 });
                 const reasoningBlock = renderHumanReasoning(row);
                 return `
-                <div class="trace-item decision-item ${alt} ${linked}">
+                <div class="trace-item decision-item ${alt} ${linked}" ${jumpMark}>
                     <div class="decision-timeline-head">
                         <div class="decision-meta-left">
                             <span class="pill">confidence ${esc(row.confidence || 'n/a')}</span>
@@ -3373,6 +3387,18 @@
                 if (openBtn) openBtn.addEventListener('click', openBacklinkGraphNode);
                 if (clearBtn) clearBtn.addEventListener('click', clearOverviewBacklink);
             }
+            focusGraphJumpTarget(body);
+        }
+
+        function focusGraphJumpTarget(container) {
+            if (!container) return;
+            const target = container.querySelector('[data-graph-jump-target="1"]');
+            if (!target) return;
+            requestAnimationFrame(() => {
+                target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                target.classList.add('jump-target');
+                setTimeout(() => target.classList.remove('jump-target'), 3400);
+            });
         }
 
         function groupColor(group) {
