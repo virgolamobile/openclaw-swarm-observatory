@@ -784,8 +784,25 @@
         }
         .graph-actions {
             display: flex;
+            align-items: center;
+            gap: 8px;
             justify-content: flex-end;
             margin-bottom: 6px;
+        }
+        .graph-actions label {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: .72rem;
+            color: #c1d4ff;
+        }
+        .graph-actions select {
+            border: 1px solid rgba(255,255,255,.18);
+            border-radius: 8px;
+            background: #12203d;
+            color: #d7e6ff;
+            font-size: .72rem;
+            padding: 4px 7px;
         }
         .graph-expand-btn {
             border: 1px solid rgba(255,255,255,.18);
@@ -1607,6 +1624,9 @@
             graphInteractionTs: 0,
             nodeDetails: null,
             graphJump: null,
+            capabilities: null,
+            graphOutcomeLimitDefault: 5,
+            graphOutcomeLimit: null,
             docsIndex: [],
             docsCurrent: null,
             docsCurrentAnchor: null,
@@ -2549,6 +2569,21 @@
             modal.classList.add('open');
             modal.setAttribute('aria-hidden', 'false');
             initGraphViewport('graphfs');
+
+            const outcomeLimitSel = document.getElementById('graphfs-outcome-limit');
+            if (outcomeLimitSel) {
+                outcomeLimitSel.addEventListener('change', async () => {
+                    const nextLimit = normalizeOutcomeLimit(outcomeLimitSel.value, store.graphOutcomeLimitDefault);
+                    store.graphOutcomeLimit = nextLimit;
+                    localStorage.setItem('openclaw.graph.maxOutcomes', String(nextLimit));
+                    if (store.selectedAgent) {
+                        await openDrilldown(store.selectedAgent, { background: true, bypassCache: true });
+                        const refreshed = store.drilldown?.depth?.causal_graph || { nodes: [], edges: [] };
+                        content.innerHTML = renderCausalGraph(refreshed, { prefix: 'graphfs', expandable: false });
+                        initGraphViewport('graphfs');
+                    }
+                });
+            }
         }
 
         function closeGraphFullscreenModal() {
@@ -2924,15 +2959,57 @@
             return false;
         }
 
+        function normalizeOutcomeLimit(rawValue, fallbackValue = 5) {
+            const parsed = Number.parseInt(String(rawValue ?? ''), 10);
+            const fallback = Number.isFinite(Number(fallbackValue)) ? Number(fallbackValue) : 5;
+            const base = Number.isFinite(parsed) ? parsed : fallback;
+            return Math.max(1, Math.min(24, base));
+        }
+
+        async function fetchCapabilities() {
+            try {
+                const response = await fetch('/capabilities');
+                if (!response.ok) return;
+                const payload = await response.json();
+                store.capabilities = payload;
+                const fromBackend = normalizeOutcomeLimit(payload?.capabilities?.graph?.max_outcomes, 5);
+                store.graphOutcomeLimitDefault = fromBackend;
+
+                const saved = localStorage.getItem('openclaw.graph.maxOutcomes');
+                const selected = normalizeOutcomeLimit(saved, fromBackend);
+                store.graphOutcomeLimit = selected;
+            } catch (error) {
+                const fallback = normalizeOutcomeLimit(store.graphOutcomeLimitDefault, 5);
+                if (!store.graphOutcomeLimit) store.graphOutcomeLimit = fallback;
+            }
+        }
+
+        function buildDrilldownUrl(agentName) {
+            const base = `/drilldown/${encodeURIComponent(agentName)}`;
+            const limit = normalizeOutcomeLimit(store.graphOutcomeLimit, store.graphOutcomeLimitDefault);
+            return `${base}?max_outcomes=${encodeURIComponent(String(limit))}`;
+        }
+
+        function buildNodeDrilldownUrl(agentName, nodeId) {
+            const base = `/drilldown/${encodeURIComponent(agentName)}/node/${encodeURIComponent(nodeId)}`;
+            const limit = normalizeOutcomeLimit(store.graphOutcomeLimit, store.graphOutcomeLimitDefault);
+            return `${base}?max_outcomes=${encodeURIComponent(String(limit))}`;
+        }
+
         async function openDrilldown(agentName, options = {}) {
             const background = Boolean(options.background);
+            const bypassCache = Boolean(options.bypassCache);
+            const prevSelectedAgent = store.selectedAgent;
+            const changingAgent = String(prevSelectedAgent || '') !== String(agentName || '');
             store.selectedAgent = agentName;
-            store.nodeDetails = null;
-            store.graphJump = null;
-            store.graphNodeWeights = { graph: {}, graphfs: {} };
+            if (changingAgent) {
+                store.nodeDetails = null;
+                store.graphJump = null;
+                store.graphNodeWeights = { graph: {}, graphfs: {} };
+            }
             const selectedBefore = store.drilldown?.agent || '';
             const cacheEntry = store.drilldownByAgent.get(agentName);
-            const hasFreshCache = Boolean(cacheEntry && (Date.now() - Number(cacheEntry.ts || 0)) <= store.drilldownCacheTtlMs);
+            const hasFreshCache = !bypassCache && Boolean(cacheEntry && (Date.now() - Number(cacheEntry.ts || 0)) <= store.drilldownCacheTtlMs);
 
             if (hasFreshCache) {
                 store.drilldown = cacheEntry.payload;
@@ -2953,7 +3030,7 @@
             const controller = new AbortController();
             store.drilldownAbortController = controller;
             try {
-                const response = await fetch(`/drilldown/${encodeURIComponent(agentName)}`, { signal: controller.signal });
+                const response = await fetch(buildDrilldownUrl(agentName), { signal: controller.signal });
                 if (requestSeq !== store.drilldownRequestSeq) return;
                 if (!response.ok) {
                     if (!hasFreshCache) store.drilldown = null;
@@ -3351,6 +3428,17 @@
                 if (expandBtn) {
                     expandBtn.addEventListener('click', openGraphFullscreenModal);
                 }
+                const outcomeLimitSel = document.getElementById('graph-outcome-limit');
+                if (outcomeLimitSel) {
+                    outcomeLimitSel.addEventListener('change', async () => {
+                        const nextLimit = normalizeOutcomeLimit(outcomeLimitSel.value, store.graphOutcomeLimitDefault);
+                        store.graphOutcomeLimit = nextLimit;
+                        localStorage.setItem('openclaw.graph.maxOutcomes', String(nextLimit));
+                        if (store.selectedAgent) {
+                            await openDrilldown(store.selectedAgent, { background: true, bypassCache: true });
+                        }
+                    });
+                }
                 return;
             }
 
@@ -3705,6 +3793,12 @@
             const outcomeMetaText = outcomesShown != null && outcomesLimit != null
                 ? ` · outcomes shown: ${outcomesShown}/${outcomesLimit}`
                 : '';
+            const outcomeChoices = [3, 5, 8, 12, 16, 24];
+            const selectedLimit = normalizeOutcomeLimit(store.graphOutcomeLimit, outcomesLimit || store.graphOutcomeLimitDefault);
+            const outcomeLimitOptions = outcomeChoices
+                .filter((value) => !outcomesLimit || value <= outcomesLimit || value === selectedLimit)
+                .map((value) => `<option value="${value}" ${value === selectedLimit ? 'selected' : ''}>${value}</option>`)
+                .join('');
 
             return `
                 <div class="graph-wrap">
@@ -3714,7 +3808,12 @@
                         <div class="graph-legend">${legend}</div>
                     </div>
                     ${detailHtml}
-                    ${expandable ? '<div class="graph-actions"><button id="graph-expand-btn" class="graph-expand-btn" title="Expand graph view">Expand</button></div>' : ''}
+                    <div class="graph-actions">
+                        <label for="${prefix}-outcome-limit">Outcomes
+                            <select id="${prefix}-outcome-limit" title="Max outcomes shown">${outcomeLimitOptions}</select>
+                        </label>
+                        ${expandable ? '<button id="graph-expand-btn" class="graph-expand-btn" title="Expand graph view">Expand</button>' : ''}
+                    </div>
                     <div class="small muted" style="margin-bottom:6px;">Pan: drag · Zoom: wheel · Reset: double-click</div>
                     <div id="${stageId}" class="graph-stage">
                         <svg id="${svgId}" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
@@ -3743,13 +3842,13 @@
 
         function shouldDeferDrilldownRefresh() {
             if (store.activeTab !== 'graph') return false;
-            return (Date.now() - (store.graphInteractionTs || 0)) < 9000;
+            return (Date.now() - (store.graphInteractionTs || 0)) < 1800;
         }
 
         async function openNodeDetails(nodeId) {
             if (!store.selectedAgent) return;
             try {
-                const response = await fetch(`/drilldown/${encodeURIComponent(store.selectedAgent)}/node/${encodeURIComponent(nodeId)}`);
+                const response = await fetch(buildNodeDrilldownUrl(store.selectedAgent, nodeId));
                 if (!response.ok) return;
                 const payload = await response.json();
                 store.nodeDetails = payload;
@@ -3946,7 +4045,10 @@
                     store.selectedAgent = orderedAgentNames.length ? orderedAgentNames[0] : null;
                 }
                 if (store.selectedAgent && !shouldDeferDrilldownRefresh()) {
-                    await openDrilldown(store.selectedAgent, { background: true });
+                    await openDrilldown(store.selectedAgent, {
+                        background: true,
+                        bypassCache: store.activeTab === 'graph',
+                    });
                 }
                 scheduleRender({
                     agents: true,
@@ -3999,7 +4101,10 @@
                 if (!data || !data.agent) return;
                 store.agents.set(data.agent, data);
                 if (store.selectedAgent && String(store.selectedAgent) === String(data.agent) && !shouldDeferDrilldownRefresh()) {
-                    openDrilldown(store.selectedAgent, { background: true });
+                    openDrilldown(store.selectedAgent, {
+                        background: true,
+                        bypassCache: store.activeTab === 'graph',
+                    });
                 }
                 scheduleRender({ agents: true, refresh: true });
             });
@@ -4077,6 +4182,7 @@
                 const value = node.getAttribute('data-bc-value') || '';
                 await handleBreadcrumbAction(action, value);
             });
+            await fetchCapabilities();
             await waitForReady(10, 450);
             const socket = io({ transports: ['websocket', 'polling'] });
             bindSocketHandlers(socket);

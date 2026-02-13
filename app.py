@@ -373,6 +373,7 @@ def docs_content(doc_name):
 def drilldown(agent_name):
     """Return full drilldown payload for a specific agent."""
     target = normalize_agent_name(agent_name)
+    max_outcomes = request.args.get('max_outcomes', type=int)
     with state_lock:
         snapshot = find_agent_snapshot(target)
         if snapshot is None:
@@ -381,7 +382,7 @@ def drilldown(agent_name):
                 'found': False,
                 'error': 'agent_not_found',
             }, 404
-        depth = compute_drilldown_depth(snapshot, target)
+        depth = compute_drilldown_depth(snapshot, target, max_outcomes=max_outcomes)
 
     return {
         'agent': snapshot.get('agent', target),
@@ -395,6 +396,7 @@ def drilldown(agent_name):
 def drilldown_node(agent_name, node_id):
     """Return node-level deep details for a selected causal graph node."""
     target = normalize_agent_name(agent_name)
+    max_outcomes = request.args.get('max_outcomes', type=int)
     with state_lock:
         snapshot = find_agent_snapshot(target)
         if snapshot is None:
@@ -403,7 +405,7 @@ def drilldown_node(agent_name, node_id):
                 'found': False,
                 'error': 'agent_not_found',
             }, 404
-        depth = compute_drilldown_depth(snapshot, target)
+        depth = compute_drilldown_depth(snapshot, target, max_outcomes=max_outcomes)
         graph = depth.get('causal_graph', {}) if isinstance(depth, dict) else {}
         nodes = graph.get('nodes', []) if isinstance(graph, dict) else []
         edges = graph.get('edges', []) if isinstance(graph, dict) else []
@@ -449,14 +451,14 @@ def drilldown_node(agent_name, node_id):
     }
 
 
-def compute_drilldown_depth(snapshot, target):
+def compute_drilldown_depth(snapshot, target, max_outcomes=None):
     """Build all layered drilldown sections for one agent snapshot."""
     timeline = build_agent_timeline(snapshot)
     agent_cron = cron_details_by_agent.get(snapshot.get('agent', ''), [])
     cron_timeline = build_cron_timeline(agent_cron)
     context_roots = load_agent_context_roots(snapshot)
     decisions = infer_decision_trace(target, timeline, context_roots)
-    causal_graph = build_causal_graph(snapshot, decisions, cron_timeline, context_roots)
+    causal_graph = build_causal_graph(snapshot, decisions, cron_timeline, context_roots, max_outcomes=max_outcomes)
     return {
         'overview': {
             'status': snapshot.get('status', 'unknown'),
@@ -928,7 +930,7 @@ def clip_text(value, max_len=140):
     return text[:max_len - 1] + '…'
 
 
-def build_causal_graph(snapshot, decisions, cron_timeline, context_roots):
+def build_causal_graph(snapshot, decisions, cron_timeline, context_roots, max_outcomes=None):
     """Build causal graph nodes/edges with explicit cause→effect reasoning paths."""
     nodes = []
     edges = []
@@ -1125,7 +1127,12 @@ def build_causal_graph(snapshot, decisions, cron_timeline, context_roots):
             decision_id = None
         action_nodes.append((node_id, row, abs_idx, decision_id))
 
-    outcome_source_nodes = action_nodes[-GRAPH_MAX_OUTCOMES:]
+    if isinstance(max_outcomes, int):
+        effective_max_outcomes = max(1, min(max_outcomes, 24))
+    else:
+        effective_max_outcomes = GRAPH_MAX_OUTCOMES
+
+    outcome_source_nodes = action_nodes[-effective_max_outcomes:]
     for action_id, row, abs_idx, decision_id in outcome_source_nodes:
         status = str(row.get('status', 'unknown')).lower()
         outcome_id = f'outcome:{abs_idx}'
@@ -1287,7 +1294,7 @@ def build_causal_graph(snapshot, decisions, cron_timeline, context_roots):
         'nodes': nodes,
         'edges': edges,
         'meta': {
-            'max_outcomes': GRAPH_MAX_OUTCOMES,
+            'max_outcomes': effective_max_outcomes,
             'outcomes_shown': len(outcome_source_nodes),
         },
     }
