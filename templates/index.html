@@ -663,6 +663,14 @@
         .graph-stage.dragging { cursor: grabbing; }
         .graph-node-text { font-size: 11px; fill: #e8eefc; }
         .graph-edge-text { font-size: 10px; fill: #a9b7d9; }
+        .graph-layer-refresh {
+            transform-origin: center;
+            animation: graphLayerRefresh .34s ease;
+        }
+        @keyframes graphLayerRefresh {
+            0% { opacity: .72; transform: scale(0.985); }
+            100% { opacity: 1; transform: scale(1); }
+        }
         .graph-summary {
             border: 1px solid rgba(255,255,255,.1);
             border-radius: 8px;
@@ -3549,6 +3557,7 @@
         function renderCausalGraph(graph, options = {}) {
             const nodes = Array.isArray(graph.nodes) ? graph.nodes : [];
             const edges = Array.isArray(graph.edges) ? graph.edges : [];
+            const graphMeta = (graph && typeof graph.meta === 'object' && graph.meta) ? graph.meta : {};
             if (!nodes.length) {
                 return '<div class="trace-item">Graph is not available for this agent.</div>';
             }
@@ -3691,12 +3700,17 @@
             ].map(([group, label]) => `<span class="graph-legend-item"><span class="graph-legend-dot" style="background:${groupColor(group)}"></span>${esc(label)}</span>`).join('');
             const liveCount = nodes.filter((node) => node?.meta?.live).length;
             const avgWeight = nodes.length ? (nodes.reduce((sum, node) => sum + nodeWeight(node), 0) / nodes.length) : 0;
+            const outcomesShown = Number.isFinite(Number(graphMeta.outcomes_shown)) ? Number(graphMeta.outcomes_shown) : null;
+            const outcomesLimit = Number.isFinite(Number(graphMeta.max_outcomes)) ? Number(graphMeta.max_outcomes) : null;
+            const outcomeMetaText = outcomesShown != null && outcomesLimit != null
+                ? ` · outcomes shown: ${outcomesShown}/${outcomesLimit}`
+                : '';
 
             return `
                 <div class="graph-wrap">
                     <div class="graph-summary">
                         <div><strong>Causal path:</strong> context/reasons → decision → action → outcome</div>
-                        <div class="small muted">Live nodes highlighted: ${esc(String(liveCount))} · average decision weight: ${esc(avgWeight.toFixed(2))} · click a node to open contextual drilldown.</div>
+                        <div class="small muted">Live nodes highlighted: ${esc(String(liveCount))} · average decision weight: ${esc(avgWeight.toFixed(2))}${esc(outcomeMetaText)} · click a node to open contextual drilldown.</div>
                         <div class="graph-legend">${legend}</div>
                     </div>
                     ${detailHtml}
@@ -3709,7 +3723,7 @@
                                     <path d="M0,0 L8,4 L0,8 z" fill="#45608f" />
                                 </marker>
                             </defs>
-                            <g id="${layerId}">${edgeSvg}${nodeSvg}</g>
+                            <g id="${layerId}" class="graph-layer-refresh">${edgeSvg}${nodeSvg}</g>
                         </svg>
                     </div>
                 </div>

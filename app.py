@@ -56,6 +56,11 @@ DOCS_DIR = os.path.join(os.path.dirname(__file__), 'docs')
 
 OPENCLAW_MODE = os.environ.get('AGENT_DASHBOARD_MODE', 'auto').strip().lower()
 CORE_POLL_INTERVAL_SEC = float(os.environ.get('AGENT_DASHBOARD_CORE_POLL_SEC', '5'))
+try:
+    GRAPH_MAX_OUTCOMES = int(os.environ.get('AGENT_DASHBOARD_GRAPH_MAX_OUTCOMES', '5'))
+except Exception:
+    GRAPH_MAX_OUTCOMES = 5
+GRAPH_MAX_OUTCOMES = max(1, min(GRAPH_MAX_OUTCOMES, 24))
 CORE_CAPABILITIES = {
     'provider': 'openclaw-cli',
     'openclaw_cli': False,
@@ -64,6 +69,9 @@ CORE_CAPABILITIES = {
         'cron_list': False,
         'status': False,
         'presence': False,
+    },
+    'graph': {
+        'max_outcomes': GRAPH_MAX_OUTCOMES,
     },
     'mode': OPENCLAW_MODE,
 }
@@ -1117,7 +1125,8 @@ def build_causal_graph(snapshot, decisions, cron_timeline, context_roots):
             decision_id = None
         action_nodes.append((node_id, row, abs_idx, decision_id))
 
-    for action_id, row, abs_idx, decision_id in action_nodes:
+    outcome_source_nodes = action_nodes[-GRAPH_MAX_OUTCOMES:]
+    for action_id, row, abs_idx, decision_id in outcome_source_nodes:
         status = str(row.get('status', 'unknown')).lower()
         outcome_id = f'outcome:{abs_idx}'
         action_weight = clamp_weight((node_by_id.get(action_id) or {}).get('meta', {}).get('weight', 0.45))
@@ -1277,6 +1286,10 @@ def build_causal_graph(snapshot, decisions, cron_timeline, context_roots):
     return {
         'nodes': nodes,
         'edges': edges,
+        'meta': {
+            'max_outcomes': GRAPH_MAX_OUTCOMES,
+            'outcomes_shown': len(outcome_source_nodes),
+        },
     }
 
 
