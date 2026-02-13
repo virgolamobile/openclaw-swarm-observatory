@@ -2,180 +2,95 @@
 
 [![Tests](https://github.com/virgolamobile/openclaw-swarm-observatory/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/virgolamobile/openclaw-swarm-observatory/actions/workflows/tests.yml)
 
-A real-time observability dashboard for OpenClaw multi-agent systems.
+When a multi-agent swarm starts making decisions at speed, logs alone become a detective novel written by four unreliable narrators. This dashboard turns that chaos into something you can actually reason about: what happened, why it happened, what influenced it, and what to inspect next. 🛰️
 
-## Author
+![OpenClaw Observatory Dashboard](screenshot.png)
 
-- **Name:** Niccolò Zamborlini
-- **Company:** encom.io
-- **Project URL:** https://github.com/virgolamobile/openclaw-swarm-observatory/tree/main
+## What this is (and why it exists)
 
-This project provides:
-- Live swarm monitoring (agent state, interactions, cron activity)
+OpenClaw Agent Dashboard is a real-time observability surface for OpenClaw systems. It is designed to stay passive and explain behavior, not alter it: it listens, correlates, and presents evidence from telemetry, timelines, and document provenance.
+
+The goal is simple: move from “something feels off” to “here is the exact causal chain” without spending half your day grepping logs.
+
+## Why it feels useful in practice
+
+You start from a global view, zoom into one agent, then drill into a single node decision with provenance and constraints attached. Instead of bouncing between terminals and markdown files, you follow one coherent thread from signal to explanation. If your swarm behaves like an over-caffeinated jazz quartet, this gives you the score. 🎷
+
+## Core capabilities
+
+- Real-time updates via Flask-SocketIO
 - Progressive drilldown from overview to root-cause evidence
-- Causal graph analysis (constraints → decisions → actions → outcomes)
-- Deep node inspection with file-level provenance
+- Causal graph exploration (constraints → decisions → actions → outcomes)
+- Deep node inspection at `/drilldown/<agent>/node/<nodeId>`
+- Cron timeline with schedule, outcomes, durations, and summaries
+- Dynamic markdown context-root discovery (no brittle hardcoded file names)
 
-## Why this project exists
+## Architecture in one minute
 
-Complex agent swarms are hard to debug. This dashboard turns distributed activity into a readable, inspectable, and explainable control surface.
+- `app.py`: backend API, websocket events, telemetry fusion, drilldown logic
+- `templates/index.html`: UI rendering, interactions, graph behaviors
+- `reader.py`: optional standalone bus reader utility
+- `tests/test_app_logic.py`: backend unit tests
 
-You can move from:
-1. **What is happening?**
-2. **What happened before?**
-3. **Why was a decision taken?**
-4. **Which workspace documents influenced behavior?**
-
-## Key features
-
-- **Real-time updates** via Flask-SocketIO
-- **OpenClaw-compliant passive mode** (no behavior changes required in agents)
-- **Cron timeline** with next runs, outcomes, durations, and summaries
-- **Causal graph** with map-like pan/zoom interaction
-- **Node deep-dive** (`/drilldown/<agent>/node/<nodeId>`)
-- **Dynamic markdown discovery** for context roots (not hardcoded to fixed file names)
-
-## Architecture at a glance
-
-- `app.py` — backend API + websocket + telemetry fusion + drilldown engine
-- `templates/index.html` — dashboard UI, graph renderer, interaction logic
-- `reader.py` — optional standalone bus reader utility
-- `tests/test_app_logic.py` — backend unit tests
-
-## Frontend dependencies (vendored)
-
-The dashboard serves frontend libraries from local files under `static/vendor/`.
-
-Vendored libraries:
-- Socket.IO client
-- marked
-- DOMPurify
-- highlight.js (JS + CSS theme)
-
-This removes runtime dependency on public CDNs for normal operation.
+Frontend dependencies are vendored under `static/vendor/` (Socket.IO client, marked, DOMPurify, highlight.js), so normal operation does not depend on public CDNs.
 
 ## Quick start
-
-### 1) Create a virtual environment
 
 ```bash
 python3 -m venv venv
 source venv/bin/activate
-```
-
-### 2) Install dependencies
-
-```bash
 pip install -r requirements.txt
-```
-
-### 3) Run locally
-
-```bash
 python app.py
 ```
 
-Dashboard URL:
+Dashboard: `http://127.0.0.1:5050`
 
-- `http://127.0.0.1:5050`
-
-### 4) Production-style run (Gunicorn)
+Production-style run:
 
 ```bash
 gunicorn --preload -k eventlet -w 1 -b 0.0.0.0:5050 app:app
 ```
 
-## Environment variables
+## API snapshot
 
-- `AGENT_DASHBOARD_MODE`
-  - `auto` (default)
-  - `core-only-passive`
-  - `legacy`
-- `AGENT_DASHBOARD_CORE_POLL_SEC` (default `5`)
-- `AGENT_DASHBOARD_DISABLE_INTERNAL_READER=1` (optional)
+- `GET /ready` – readiness for frontend bootstrap
+- `GET /capabilities` – available telemetry channels and current mode
+- `GET /insights` – aggregated dashboard payload
+- `GET /drilldown/<agent>` – layered drilldown for one agent
+- `GET /drilldown/<agent>/node/<nodeId>` – node-level deep analysis
+- `GET /docs/index` – documentation manifest for in-app docs
+- `GET /docs/content/<docName>` – markdown body for one whitelisted file
 
-## API reference (summary)
+## Runtime configuration
 
-- `GET /ready`
-  - Service readiness for frontend bootstrap
-- `GET /capabilities`
-  - Available telemetry channels and mode
-- `GET /insights`
-  - Aggregated global dashboard payload
-- `GET /drilldown/<agent>`
-  - Full layered drilldown for one agent
-- `GET /drilldown/<agent>/node/<nodeId>`
-  - Extra deep node-level analysis payload
-- `GET /docs/index`
-  - Documentation manifest used by in-app docs modal
-- `GET /docs/content/<docName>`
-  - Markdown content for one whitelisted docs file
+- `AGENT_DASHBOARD_MODE`: `auto` (default), `core-only-passive`, `legacy`
+- `AGENT_DASHBOARD_CORE_POLL_SEC`: polling interval (default `5`)
+- `AGENT_DASHBOARD_DISABLE_INTERNAL_READER=1`: disable internal reader (optional)
 
 ## Testing
-
-Run all unit tests:
 
 ```bash
 ./venv/bin/python -m pytest -q
 ```
 
-## Mini changelog
+## Documentation strategy (Repo + Wiki)
 
-### 2026-02-12
+Yes, GitHub Wiki is a great fit.
 
-- Reached 100% unit-test coverage on `app.py` (`27 passed`).
-- Added contribution governance files (`CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`).
-- Completed in-app documentation UX: header docs index, contextual help icons, docs modal.
-- Extended drilldown explainability: causal graph, node-level deep dive, dynamic context-root discovery.
+Use this repository `README` as the front door (what it is, quick start, screenshot, key links), keep technical source-of-truth docs versioned in `docs/`, and use the Wiki for narrative guides, walkthroughs, and evolving operational playbooks that benefit from lightweight editing.
 
-## Screens and usage flow
+In short: stable specs in-repo, living knowledge in Wiki, and the README as the map between them. 🧭
 
-1. Select an agent in **Swarm Overview**
-2. Navigate tabs:
-   - **Why decisions**
-   - **SOUL/file derivation**
-   - **Causal Graph**
-   - **Cron timeline**
-   - **Full timeline**
-3. In **Causal Graph**:
-   - Drag = pan
-   - Mouse wheel = zoom
-   - Double-click = reset viewport
-   - Click node = deeper node-level details
+## Author
 
-## Compliance and portability
+- Niccolò Zamborlini
+- encom.io
+- Project: https://github.com/virgolamobile/openclaw-swarm-observatory/tree/main
 
-This project is designed to be OpenClaw compliant:
-- Passive read-only integration with core OpenClaw telemetry
-- Graceful degradation on partially available channels
-- Dynamic workspace markdown discovery for context provenance
-
-## Documentation
-
-See `docs/` for deep technical documentation:
-- `docs/01-installation-and-operations.md`
-- `docs/02-architecture-deep-dive.md`
-- `docs/03-ui-ux-guide.md`
-- `docs/04-api-and-data-model.md`
-- `docs/05-licensing-and-release-guidelines.md`
-
-The dashboard also exposes docs directly in-app:
-- Header button: **Docs index**
-- Modal navigation with deep links to each markdown file
-
-## Community standards
+## Community and licensing
 
 - Contribution process: `CONTRIBUTING.md`
 - Community behavior policy: `CODE_OF_CONDUCT.md`
+- License: **PolyForm Noncommercial 1.0.0** (`LICENSE`)
 
-## License
-
-This repository is licensed under **PolyForm Noncommercial 1.0.0**.
-
-- Commercial use is not permitted without separate permission.
-- See `LICENSE` for full legal terms.
-
-Third-party vendored assets are covered by their own upstream licenses.
-See `THIRD_PARTY_NOTICES.md` and `static/vendor/licenses/` for details.
-
-For commercial licensing, contact the project owner directly.
+Third-party vendored assets are covered by upstream licenses in `THIRD_PARTY_NOTICES.md` and `static/vendor/licenses/`.
