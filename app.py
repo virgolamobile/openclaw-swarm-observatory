@@ -849,6 +849,7 @@ def infer_decision_trace(agent_name, timeline, context_roots=None):
         decision_candidate = (
             entry_type.startswith('recent_assistant')
             or entry_type == 'message'
+            or entry_type in {'user_interaction', 'assistant_interaction'}
             or 'cron_finished_ok' in entry_type
             or 'cron_last_run' in entry_type
         )
@@ -1177,7 +1178,7 @@ def build_causal_graph(snapshot, decisions, cron_timeline, context_roots):
             else:
                 activity_sec = 1.6
         else:
-            activity_sec = 1.6
+            activity_sec = min(max(now_ts - start_ts, 1.6), 180.0)
 
         if set_node_live(decision_id, start_ts, activity_sec):
             live_decision_nodes.append((decision_id, start_ts))
@@ -1203,7 +1204,7 @@ def build_causal_graph(snapshot, decisions, cron_timeline, context_roots):
         if isinstance(raw_duration_ms, (int, float)) and raw_duration_ms > 0:
             duration_sec = float(raw_duration_ms) / 1000.0
         elif kind in {'started', 'run'}:
-            duration_sec = 3.0
+            duration_sec = min(max(now_ts - start_ts, 3.0), 240.0)
         elif kind == 'finished':
             duration_sec = 1.2
 
@@ -1233,6 +1234,14 @@ def build_causal_graph(snapshot, decisions, cron_timeline, context_roots):
         trigger_id = linked_decision or latest_action_id
     elif live_decision_nodes:
         trigger_id, _ = max(live_decision_nodes, key=lambda item: item[1])
+
+    if trigger_id is None:
+        status_text = str(snapshot.get('status', '')).strip().lower()
+        active_markers = ('active', 'thinking', 'reason', 'working', 'busy', 'run', 'execut')
+        if any(marker in status_text for marker in active_markers):
+            start_ts = parse_any_ts(snapshot.get('last_seen'))
+            if start_ts > 0 and set_node_live(agent_node, start_ts, min(max(now_ts - start_ts, 2.0), 180.0)):
+                trigger_id = agent_node
 
     if trigger_id and trigger_id in node_by_id:
         node_by_id[trigger_id].setdefault('meta', {})['trigger_source'] = True
