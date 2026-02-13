@@ -654,6 +654,67 @@
         .graph-stage.dragging { cursor: grabbing; }
         .graph-node-text { font-size: 11px; fill: #e8eefc; }
         .graph-edge-text { font-size: 10px; fill: #a9b7d9; }
+        .graph-actions {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 6px;
+        }
+        .graph-expand-btn {
+            border: 1px solid rgba(255,255,255,.18);
+            border-radius: 8px;
+            background: #12203d;
+            color: #d7e6ff;
+            font-size: .73rem;
+            line-height: 1;
+            padding: 5px 8px;
+            cursor: pointer;
+        }
+        .graph-expand-btn:hover {
+            border-color: #5b8cff;
+            background: #1a2d56;
+        }
+
+        .graph-fullscreen-modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(5, 10, 20, .82);
+            z-index: 29;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 12px;
+        }
+        .graph-fullscreen-modal.open { display: flex; }
+        .graph-fullscreen-card {
+            width: min(1400px, 98vw);
+            height: min(92vh, 980px);
+            background: #0f1830;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+            display: grid;
+            grid-template-rows: auto 1fr;
+        }
+        .graph-fullscreen-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--border);
+            background: #101a32;
+        }
+        .graph-fullscreen-body {
+            padding: 10px;
+            overflow: auto;
+        }
+        .graph-fullscreen-body .graph-wrap {
+            max-height: none;
+            height: 100%;
+        }
+        .graph-fullscreen-body .graph-stage {
+            min-height: max(72vh, 520px);
+        }
 
         .pill {
             display: inline-block;
@@ -1374,6 +1435,16 @@
         </div>
     </div>
 
+    <div id="graph-fullscreen-modal" class="graph-fullscreen-modal" aria-hidden="true">
+        <div class="graph-fullscreen-card" role="dialog" aria-modal="true" aria-label="Causal graph fullscreen">
+            <div class="graph-fullscreen-head">
+                <strong>Causal Graph · Expanded view</strong>
+                <button class="header-link" id="close-graph-fullscreen">Close</button>
+            </div>
+            <div class="graph-fullscreen-body" id="graph-fullscreen-content"></div>
+        </div>
+    </div>
+
     <div id="telemetry-modal" class="telemetry-modal" aria-hidden="true">
         <div class="telemetry-card" role="dialog" aria-modal="true" aria-label="Telemetry warning details">
             <div class="telemetry-head">
@@ -1403,6 +1474,7 @@
             drilldownAbortController: null,
             activeTab: 'decisions',
             graphViewport: { scale: 1, tx: 0, ty: 0 },
+            graphViewportFullscreen: { scale: 1, tx: 0, ty: 0 },
             graphInteractionTs: 0,
             nodeDetails: null,
             docsIndex: [],
@@ -2330,6 +2402,42 @@
             renderState.overviewSignature = '';
         }
 
+        function openGraphFullscreenModal() {
+            const modal = document.getElementById('graph-fullscreen-modal');
+            const content = document.getElementById('graph-fullscreen-content');
+            const graph = store.drilldown?.depth?.causal_graph || { nodes: [], edges: [] };
+            if (!modal || !content) return;
+
+            store.graphViewportFullscreen = {
+                scale: store.graphViewport.scale,
+                tx: store.graphViewport.tx,
+                ty: store.graphViewport.ty,
+            };
+
+            content.innerHTML = renderCausalGraph(graph, { prefix: 'graphfs', expandable: false });
+            modal.classList.add('open');
+            modal.setAttribute('aria-hidden', 'false');
+            initGraphViewport('graphfs');
+        }
+
+        function closeGraphFullscreenModal() {
+            const modal = document.getElementById('graph-fullscreen-modal');
+            const content = document.getElementById('graph-fullscreen-content');
+            if (!modal || !content) return;
+
+            modal.classList.remove('open');
+            modal.setAttribute('aria-hidden', 'true');
+            content.innerHTML = '';
+
+            store.graphViewport = {
+                scale: store.graphViewportFullscreen.scale,
+                tx: store.graphViewportFullscreen.tx,
+                ty: store.graphViewportFullscreen.ty,
+            };
+            applyGraphTransform('graph');
+            initGraphViewport('graph');
+        }
+
         function renderOverviewLines(lines) {
             if (!Array.isArray(lines) || !lines.length) {
                 return '<div class="overview-detail"><h4>Detail</h4><div>No records available.</div></div>';
@@ -2676,6 +2784,15 @@
             return message.includes('aborted');
         }
 
+        function isBenignDrilldownNetworkError(error) {
+            const name = String(error?.name || '').toLowerCase();
+            const message = String(error?.message || '').toLowerCase();
+            if (name === 'typeerror' && (message.includes('load failed') || message.includes('failed to fetch') || message.includes('networkerror'))) {
+                return true;
+            }
+            return false;
+        }
+
         async function openDrilldown(agentName, options = {}) {
             const background = Boolean(options.background);
             store.selectedAgent = agentName;
@@ -2718,7 +2835,9 @@
                 store.drilldownLoadingAgent = null;
                 scheduleRender({ drilldown: true, refresh: true });
             } catch (error) {
+                if (requestSeq !== store.drilldownRequestSeq) return;
                 if (isBenignDrilldownAbort(error, controller)) return;
+                if (background && isBenignDrilldownNetworkError(error)) return;
                 console.error('drilldown error', error);
                 if (!hasFreshCache && selectedBefore !== agentName) {
                     store.drilldown = null;
@@ -3078,8 +3197,12 @@
             }
 
             if (store.activeTab === 'graph') {
-                body.innerHTML = renderCausalGraph(depth.causal_graph || { nodes: [], edges: [] });
-                initGraphViewport();
+                body.innerHTML = renderCausalGraph(depth.causal_graph || { nodes: [], edges: [] }, { prefix: 'graph', expandable: true });
+                initGraphViewport('graph');
+                const expandBtn = document.getElementById('graph-expand-btn');
+                if (expandBtn) {
+                    expandBtn.addEventListener('click', openGraphFullscreenModal);
+                }
                 return;
             }
 
@@ -3227,12 +3350,19 @@
             return lines;
         }
 
-        function renderCausalGraph(graph) {
+        function renderCausalGraph(graph, options = {}) {
             const nodes = Array.isArray(graph.nodes) ? graph.nodes : [];
             const edges = Array.isArray(graph.edges) ? graph.edges : [];
             if (!nodes.length) {
                 return '<div class="trace-item">Graph is not available for this agent.</div>';
             }
+
+            const prefix = String(options.prefix || 'graph');
+            const expandable = Boolean(options.expandable);
+            const stageId = `${prefix}-stage`;
+            const svgId = `${prefix}-svg`;
+            const layerId = `${prefix}-layer`;
+            const arrowId = `${prefix}-arrow`;
 
             const layers = { root: [], agent: [], decision: [], action: [], outcome_ok: [], outcome_bad: [], other: [] };
             nodes.forEach((node) => {
@@ -3270,7 +3400,7 @@
                 const edgeLabel = String(edge.label || '');
                 const edgeShort = splitGraphLabel(edgeLabel, 16, 1)[0] || '';
                 return `
-                    <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#45608f" stroke-width="1.2" marker-end="url(#arrow)" />
+                    <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#45608f" stroke-width="1.2" marker-end="url(#${arrowId})" />
                     <text x="${mx}" y="${my - 4}" class="graph-edge-text">${esc(edgeShort)}</text>
                     <title>${esc(edgeLabel)}</title>
                 `;
@@ -3306,25 +3436,30 @@
             return `
                 <div class="graph-wrap">
                     ${detailHtml}
+                    ${expandable ? '<div class="graph-actions"><button id="graph-expand-btn" class="graph-expand-btn" title="Expand graph view">Expand</button></div>' : ''}
                     <div class="small muted" style="margin-bottom:6px;">Pan: drag · Zoom: wheel · Reset: double-click</div>
-                    <div id="graph-stage" class="graph-stage">
-                        <svg id="graph-svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
+                    <div id="${stageId}" class="graph-stage">
+                        <svg id="${svgId}" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
                             <defs>
-                                <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
+                                <marker id="${arrowId}" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
                                     <path d="M0,0 L8,4 L0,8 z" fill="#45608f" />
                                 </marker>
                             </defs>
-                            <g id="graph-layer">${edgeSvg}${nodeSvg}</g>
+                            <g id="${layerId}">${edgeSvg}${nodeSvg}</g>
                         </svg>
                     </div>
                 </div>
             `;
         }
 
-        function applyGraphTransform() {
-            const layer = document.getElementById('graph-layer');
+        function getGraphViewport(prefix = 'graph') {
+            return prefix === 'graphfs' ? store.graphViewportFullscreen : store.graphViewport;
+        }
+
+        function applyGraphTransform(prefix = 'graph') {
+            const layer = document.getElementById(`${prefix}-layer`);
             if (!layer) return;
-            const v = store.graphViewport;
+            const v = getGraphViewport(prefix);
             layer.setAttribute('transform', `translate(${v.tx} ${v.ty}) scale(${v.scale})`);
         }
 
@@ -3345,11 +3480,12 @@
             }
         }
 
-        function initGraphViewport() {
-            const stage = document.getElementById('graph-stage');
-            const layer = document.getElementById('graph-layer');
+        function initGraphViewport(prefix = 'graph') {
+            const stage = document.getElementById(`${prefix}-stage`);
+            const layer = document.getElementById(`${prefix}-layer`);
             if (!stage || !layer) return;
-            applyGraphTransform();
+            const viewport = getGraphViewport(prefix);
+            applyGraphTransform(prefix);
 
             layer.querySelectorAll('.graph-node').forEach((node) => {
                 node.addEventListener('click', (ev) => {
@@ -3380,22 +3516,24 @@
                 const dy = ev.clientY - lastY;
                 lastX = ev.clientX;
                 lastY = ev.clientY;
-                store.graphViewport.tx += dx;
-                store.graphViewport.ty += dy;
+                viewport.tx += dx;
+                viewport.ty += dy;
                 store.graphInteractionTs = Date.now();
-                applyGraphTransform();
+                applyGraphTransform(prefix);
             };
             stage.onwheel = (ev) => {
                 ev.preventDefault();
                 const delta = ev.deltaY < 0 ? 1.08 : 0.92;
-                store.graphViewport.scale = Math.max(0.25, Math.min(3.4, store.graphViewport.scale * delta));
+                viewport.scale = Math.max(0.25, Math.min(3.4, viewport.scale * delta));
                 store.graphInteractionTs = Date.now();
-                applyGraphTransform();
+                applyGraphTransform(prefix);
             };
             stage.ondblclick = () => {
-                store.graphViewport = { scale: 1, tx: 0, ty: 0 };
+                viewport.scale = 1;
+                viewport.tx = 0;
+                viewport.ty = 0;
                 store.graphInteractionTs = Date.now();
-                applyGraphTransform();
+                applyGraphTransform(prefix);
             };
         }
 
@@ -3583,6 +3721,7 @@
             document.getElementById('open-docs-index').addEventListener('click', () => openDocsModal('INDEX.md'));
             document.getElementById('close-docs').addEventListener('click', closeDocsModal);
             document.getElementById('close-overview').addEventListener('click', closeOverviewModal);
+            document.getElementById('close-graph-fullscreen').addEventListener('click', closeGraphFullscreenModal);
             document.getElementById('close-telemetry-modal').addEventListener('click', closeTelemetryModal);
             document.getElementById('telemetry-warning-btn').addEventListener('click', openTelemetryModal);
             document.querySelectorAll('.help-btn').forEach((node) => {
@@ -3607,8 +3746,16 @@
             document.getElementById('overview-modal').addEventListener('click', (event) => {
                 if (event.target && event.target.id === 'overview-modal') closeOverviewModal();
             });
+            document.getElementById('graph-fullscreen-modal').addEventListener('click', (event) => {
+                if (event.target && event.target.id === 'graph-fullscreen-modal') closeGraphFullscreenModal();
+            });
             document.getElementById('telemetry-modal').addEventListener('click', (event) => {
                 if (event.target && event.target.id === 'telemetry-modal') closeTelemetryModal();
+            });
+            document.addEventListener('keydown', (event) => {
+                if (event.key !== 'Escape') return;
+                const graphModal = document.getElementById('graph-fullscreen-modal');
+                if (graphModal && graphModal.classList.contains('open')) closeGraphFullscreenModal();
             });
             document.getElementById('investigation-breadcrumb').addEventListener('click', async (event) => {
                 const node = event.target.closest('[data-bc-action]');
