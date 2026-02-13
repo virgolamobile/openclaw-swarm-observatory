@@ -1090,17 +1090,36 @@ def remember_interaction_key(key):
 
 
 def detect_agent_mentions(text, source_agent):
-    """Detect known agent mentions in text for agent-to-agent interaction inference."""
+    """Detect runtime-known agent mentions in text for agent-to-agent interaction inference."""
     if not isinstance(text, str):
         return []
-    known = ['europa', 'roma', 'elara', 'mercurio']
-    mentioned = []
-    low = text.lower()
-    for name in known:
-        if name == source_agent.lower():
+
+    source_norm = normalize_agent_name(source_agent)
+    known_by_norm = {}
+    for row in agent_state.values():
+        if not isinstance(row, dict):
             continue
-        if re.search(rf'\b{name}\b', low):
-            mentioned.append(name.capitalize())
+        display = str(row.get('agent') or '').strip()
+        norm = normalize_agent_name(display)
+        if not norm:
+            continue
+        known_by_norm.setdefault(norm, display)
+
+    if not known_by_norm:
+        return []
+
+    mentioned = []
+    seen = set()
+    low = text.lower()
+    for norm_name, display_name in known_by_norm.items():
+        if norm_name == source_norm:
+            continue
+        if re.search(rf'(?<![a-z0-9_]){re.escape(norm_name)}(?![a-z0-9_])', low):
+            key = normalize_agent_name(display_name)
+            if key in seen:
+                continue
+            seen.add(key)
+            mentioned.append(display_name)
     return mentioned
 
 
