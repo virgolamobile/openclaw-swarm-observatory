@@ -77,6 +77,19 @@ gunicorn --preload -k eventlet -w 1 -b 0.0.0.0:5050 app:app
 - `docs/` for versioned technical documentation
 - GitHub Wiki for operational playbooks and walkthroughs
 
+## MCP
+
+This project includes a native MCP server in `mcp_server.py`.
+
+Quick run:
+
+```bash
+python mcp_server.py
+```
+
+Default dashboard target is `http://127.0.0.1:5050` (override with `OPENCLAW_DASHBOARD_BASE_URL`).
+VS Code MCP client example config is available in `.vscode/mcp.json`.
+
 ## Author
 
 - Niccolò Zamborlini

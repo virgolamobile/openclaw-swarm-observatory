@@ -1,0 +1,15 @@
+{
+  "servers": {
+    "openclaw-observatory": {
+      "type": "stdio",
+      "command": "python",
+      "args": [
+        "mcp_server.py"
+      ],
+      "env": {
+        "OPENCLAW_DASHBOARD_BASE_URL": "http://127.0.0.1:5050",
+        "OPENCLAW_MCP_TIMEOUT_SEC": "10"
+      }
+    }
+  }
+}
