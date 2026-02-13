@@ -1,14 +1,12 @@
-<div align="center" style="margin-bottom: 30px;">
+<h1 align="center" style="margin-bottom: 30px;">
     <img src="./static/logo-oso-light.svg" alt="OpenClaw Swarm Observatory" style="width: 500px; max-width:500px;" />
-</div>
-
-<h1 align="center">OpenClaw Swarm Observatory</h1>
+</h1>
 
 <p align="center">
 <a href="https://github.com/virgolamobile/openclaw-swarm-observatory/actions"><img src="https://github.com/virgolamobile/openclaw-swarm-observatory/actions/workflows/tests.yml/badge.svg?branch=main" alt="Build Status"></a>
 </p>
 
-## About
+## About OpenClaw Swarm Observatory
 
 This project is a real-time dashboard for observing OpenClaw agent swarms. It supports inspection of current state, decision causes, and document-level provenance.
 
@@ -16,7 +14,7 @@ OpenClaw Swarm Observatory is a passive observability layer for OpenClaw systems
 
 ## Table of contents
 
-- [About](#about)
+- [About OpenClaw Swarm Observatory](#about-openclaw-swarm-observatory)
 - [Table of contents](#table-of-contents)
 - [Usage flow](#usage-flow)
 - [Core capabilities](#core-capabilities)
