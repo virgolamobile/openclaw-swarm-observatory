@@ -1,5 +1,7 @@
 # OpenClaw Agent Dashboard
 
+[![Tests](https://github.com/virgolamobile/openclaw-swarm-observatory/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/virgolamobile/openclaw-swarm-observatory/actions/workflows/tests.yml)
+
 A real-time observability dashboard for OpenClaw multi-agent systems.
 
 ## Author
