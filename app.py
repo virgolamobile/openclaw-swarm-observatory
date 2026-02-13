@@ -867,16 +867,16 @@ def infer_decision_trace(agent_name, timeline, context_roots=None):
                 evidence.append(prev_text[:260])
                 break
             if 'cron_' in prev_type:
-                reasons.append('Trigger da esecuzione cron')
+                reasons.append('Triggered by cron execution')
                 evidence.append(prev_text[:260])
                 break
             if 'thought' in prev_type:
-                reasons.append('Catena di ragionamento recente')
+                reasons.append('Recent reasoning chain')
                 evidence.append(prev_text[:260])
                 break
 
         if not reasons:
-            reasons.append('Contesto operativo continuo')
+            reasons.append('Continuous operational context')
 
         root_causes = []
         for root in context_roots:
@@ -924,24 +924,47 @@ def build_causal_graph(snapshot, decisions, cron_timeline, context_roots):
     nodes = []
     edges = []
     node_ids = set()
+    node_by_id = {}
+
+    confidence_weight = {
+        'high': 0.68,
+        'medium': 0.48,
+        'low': 0.34,
+    }
+
+    def clamp_weight(value):
+        try:
+            num = float(value)
+        except Exception:
+            return 0.1
+        if num < 0.1:
+            return 0.1
+        if num > 1.9:
+            return 1.9
+        return num
 
     def add_node(node_id, label, group, meta=None):
         if node_id in node_ids:  # pragma: no cover
             return
         node_ids.add(node_id)
-        nodes.append({
+        payload = {
             'id': node_id,
             'label': clip_text(label, 120),
             'group': group,
             'meta': meta or {},
-        })
+        }
+        payload['meta']['weight'] = clamp_weight(payload['meta'].get('weight', 0.45))
+        nodes.append(payload)
+        node_by_id[node_id] = payload
 
     def add_edge(source, target, label, meta=None):
+        edge_meta = meta or {}
+        edge_meta['weight'] = clamp_weight(edge_meta.get('weight', 0.45))
         edges.append({
             'source': source,
             'target': target,
             'label': clip_text(label, 72),
-            'meta': meta or {},
+            'meta': edge_meta,
         })
 
     agent = snapshot.get('agent', 'Agent')
@@ -949,6 +972,7 @@ def build_causal_graph(snapshot, decisions, cron_timeline, context_roots):
     add_node(agent_node, agent, 'agent', {
         'status': snapshot.get('status', 'unknown'),
         'task': snapshot.get('task', ''),
+        'weight': 0.8,
     })
 
     root_nodes = {}
@@ -962,12 +986,25 @@ def build_causal_graph(snapshot, decisions, cron_timeline, context_roots):
             'anchors': matches,
             'root_index': idx,
             'jump_tab': 'soul',
+            'weight': clamp_weight(0.56 + min(len(matches), 4) * 0.1),
         })
-        add_edge(node_id, agent_node, 'context')
+        add_edge(node_id, agent_node, 'context', {
+            'weight': 0.62,
+        })
         root_nodes[file_path] = node_id
 
     decision_nodes = []
     for idx, decision in enumerate((decisions or [])[:12]):
+        confidence = str(decision.get('confidence', 'medium')).strip().lower()
+        evidence_count = len([x for x in (decision.get('evidence') or []) if str(x).strip()])
+        root_count = len([x for x in (decision.get('root_causes') or []) if isinstance(x, dict)])
+        recency_boost = max(0.0, 0.2 - (idx * 0.016))
+        decision_weight = clamp_weight(
+            confidence_weight.get(confidence, 0.44)
+            + min(evidence_count, 4) * 0.07
+            + min(root_count, 4) * 0.05
+            + recency_boost
+        )
         node_id = f'decision:{idx}'
         add_node(node_id, decision.get('decision', 'decision'), 'decision', {
             'ts': decision.get('ts', ''),
@@ -975,34 +1012,52 @@ def build_causal_graph(snapshot, decisions, cron_timeline, context_roots):
             'why': decision.get('why', []),
             'decision_index': idx,
             'jump_tab': 'decisions',
+            'weight': decision_weight,
         })
-        add_edge(agent_node, node_id, 'decides')
+        add_edge(agent_node, node_id, 'decides', {
+            'weight': max(0.52, decision_weight - 0.15),
+        })
         if decision_nodes:
-            add_edge(decision_nodes[-1], node_id, 'evolves')
+            previous_node = node_by_id.get(decision_nodes[-1])
+            previous_weight = clamp_weight((previous_node or {}).get('meta', {}).get('weight', 0.45))
+            add_edge(decision_nodes[-1], node_id, 'evolves', {
+                'weight': clamp_weight((previous_weight + decision_weight) / 2),
+            })
 
         why_items = [str(x).strip() for x in (decision.get('why') or []) if str(x).strip()]
         for why_idx, reason_text in enumerate(why_items[:2]):
             reason_id = f'reason:{idx}:{why_idx}'
+            reason_weight = clamp_weight(decision_weight * (0.84 - why_idx * 0.08))
             add_node(reason_id, reason_text, 'reason', {
                 'decision_index': idx,
                 'jump_tab': 'decisions',
+                'weight': reason_weight,
             })
-            add_edge(reason_id, node_id, 'motivates')
+            add_edge(reason_id, node_id, 'motivates', {
+                'weight': reason_weight,
+            })
 
         evidence_items = [str(x).strip() for x in (decision.get('evidence') or []) if str(x).strip()]
         if evidence_items:
             evidence_id = f'signal:{idx}'
+            signal_weight = clamp_weight(decision_weight * 0.78)
             add_node(evidence_id, evidence_items[0], 'signal', {
                 'decision_index': idx,
                 'jump_tab': 'decisions',
+                'weight': signal_weight,
             })
-            add_edge(evidence_id, node_id, 'supports')
+            add_edge(evidence_id, node_id, 'supports', {
+                'weight': signal_weight,
+            })
 
         for root_ref in decision.get('root_causes', [])[:3]:
             ref_file = root_ref.get('file', '')
             root_id = root_nodes.get(ref_file)
             if root_id:
-                add_edge(root_id, node_id, 'constrains')
+                root_weight = clamp_weight((node_by_id.get(root_id) or {}).get('meta', {}).get('weight', 0.4))
+                add_edge(root_id, node_id, 'constrains', {
+                    'weight': clamp_weight((root_weight + decision_weight) / 2),
+                })
         decision_nodes.append(node_id)
 
     decision_times = []
@@ -1019,14 +1074,23 @@ def build_causal_graph(snapshot, decisions, cron_timeline, context_roots):
 
     for abs_idx, row in eligible_actions[-14:]:
         node_id = f'action:{abs_idx}'
-        summary = row.get('summary') or row.get('job') or kind
+        action_kind = str(row.get('kind', 'event'))
+        summary = row.get('summary') or row.get('job') or action_kind
+        status = str(row.get('status', 'unknown')).strip().lower()
+        action_recency = max(0.0, 0.24 - ((len(eligible_actions) - abs_idx - 1) * 0.012))
+        action_weight = clamp_weight(
+            0.52
+            + (0.18 if status in {'ok', 'success', 'scheduled'} else 0.32)
+            + action_recency
+        )
         add_node(node_id, summary, 'action', {
             'ts': row.get('ts', ''),
             'job': row.get('job', ''),
-            'kind': kind,
+            'kind': action_kind,
             'status': row.get('status', ''),
             'action_index': abs_idx,
             'jump_tab': 'cron_timeline',
+            'weight': action_weight,
         })
 
         linked_decision = None
@@ -1040,27 +1104,61 @@ def build_causal_graph(snapshot, decisions, cron_timeline, context_roots):
 
         if decision_nodes:
             decision_index = linked_decision if linked_decision is not None else min(abs_idx, len(decision_nodes) - 1)
-            add_edge(decision_nodes[decision_index], node_id, 'executes')
+            decision_id = decision_nodes[decision_index]
+            decision_weight = clamp_weight((node_by_id.get(decision_id) or {}).get('meta', {}).get('weight', 0.45))
+            add_edge(decision_id, node_id, 'executes', {
+                'weight': clamp_weight((decision_weight + action_weight) / 2),
+            })
         else:
-            add_edge(agent_node, node_id, 'acts')
-        action_nodes.append((node_id, row, abs_idx))
+            add_edge(agent_node, node_id, 'acts', {
+                'weight': action_weight,
+            })
+            decision_id = None
+        action_nodes.append((node_id, row, abs_idx, decision_id))
 
-    for action_id, row, abs_idx in action_nodes:
+    for action_id, row, abs_idx, decision_id in action_nodes:
         status = str(row.get('status', 'unknown')).lower()
         outcome_id = f'outcome:{abs_idx}'
+        action_weight = clamp_weight((node_by_id.get(action_id) or {}).get('meta', {}).get('weight', 0.45))
         if status in {'ok', 'success', 'scheduled'}:
             outcome_label = f"Outcome {status}: {row.get('job', '')}"
             group = 'outcome_ok'
+            outcome_weight = clamp_weight(action_weight * 0.92)
         else:
             outcome_label = f"Outcome {status}: {row.get('job', '')}"
             group = 'outcome_bad'
+            outcome_weight = clamp_weight(action_weight * 1.06)
         add_node(outcome_id, outcome_label, group, {
             'status': row.get('status', ''),
             'ts': row.get('ts', ''),
             'action_index': abs_idx,
             'jump_tab': 'cron_timeline',
+            'weight': outcome_weight,
         })
-        add_edge(action_id, outcome_id, 'produces')
+        add_edge(action_id, outcome_id, 'produces', {
+            'weight': clamp_weight((action_weight + outcome_weight) / 2),
+        })
+
+    latest_action = None
+    latest_action_score = -1.0
+    for action_id, row, abs_idx, decision_id in action_nodes:
+        ts_score = parse_any_ts(row.get('ts'))
+        score = ts_score if ts_score > 0 else float(abs_idx)
+        if score > latest_action_score:
+            latest_action_score = score
+            latest_action = (action_id, decision_id)
+
+    if latest_action:
+        action_id, decision_id = latest_action
+        action_node = node_by_id.get(action_id)
+        if action_node:
+            action_node.setdefault('meta', {})['live'] = True
+            action_node.setdefault('meta', {})['trigger_source'] = True
+        if decision_id:
+            decision_node = node_by_id.get(decision_id)
+            if decision_node:
+                decision_node.setdefault('meta', {})['live'] = True
+                decision_node.setdefault('meta', {})['trigger_source'] = True
 
     def mark_latest(group_name, limit=1):
         candidates = [n for n in nodes if n.get('group') == group_name]

@@ -693,17 +693,27 @@
             flex: 0 0 auto;
         }
         .graph-node-rect {
-            transition: filter .2s ease, stroke-width .2s ease, opacity .2s ease;
+            transition: filter .45s ease, stroke-width .45s ease, opacity .45s ease, stroke .45s ease;
         }
         .graph-node.live .graph-node-rect {
             animation: graphPulseNode 1.6s ease-in-out infinite;
+        }
+        .graph-node.weight-up .graph-node-rect {
+            animation: graphWeightUp 1.1s ease;
+        }
+        .graph-node.weight-down .graph-node-rect {
+            animation: graphWeightDown 1.1s ease;
+        }
+        .graph-node.trigger-source .graph-node-rect {
+            animation: graphTriggerGlow 1.15s ease-in-out infinite;
+            stroke: #ffe08a;
         }
         .graph-node.selected .graph-node-rect {
             filter: drop-shadow(0 0 7px rgba(91,140,255,.65));
             stroke-width: 2.1;
         }
         .graph-edge-line {
-            transition: stroke-width .2s ease, opacity .2s ease;
+            transition: stroke-width .45s ease, opacity .45s ease, stroke .45s ease;
             opacity: .72;
         }
         .graph-edge.live .graph-edge-line {
@@ -717,6 +727,20 @@
         @keyframes graphPulseNode {
             0%, 100% { filter: drop-shadow(0 0 0 rgba(22,199,132,.0)); }
             50% { filter: drop-shadow(0 0 9px rgba(22,199,132,.45)); }
+        }
+        @keyframes graphWeightUp {
+            0% { filter: brightness(1); }
+            50% { filter: brightness(1.28); }
+            100% { filter: brightness(1); }
+        }
+        @keyframes graphWeightDown {
+            0% { opacity: 1; }
+            50% { opacity: .74; }
+            100% { opacity: 1; }
+        }
+        @keyframes graphTriggerGlow {
+            0%, 100% { filter: drop-shadow(0 0 0 rgba(255,208,96,.0)); }
+            50% { filter: drop-shadow(0 0 12px rgba(255,208,96,.62)); }
         }
         @keyframes graphPulseEdge {
             0%, 100% { opacity: .68; }
@@ -1543,6 +1567,7 @@
             activeTab: 'decisions',
             graphViewport: { scale: 1, tx: 0, ty: 0 },
             graphViewportFullscreen: { scale: 1, tx: 0, ty: 0 },
+            graphNodeWeights: { graph: {}, graphfs: {} },
             graphInteractionTs: 0,
             nodeDetails: null,
             graphJump: null,
@@ -2868,6 +2893,7 @@
             store.selectedAgent = agentName;
             store.nodeDetails = null;
             store.graphJump = null;
+            store.graphNodeWeights = { graph: {}, graphfs: {} };
             const selectedBefore = store.drilldown?.agent || '';
             const cacheEntry = store.drilldownByAgent.get(agentName);
             const hasFreshCache = Boolean(cacheEntry && (Date.now() - Number(cacheEntry.ts || 0)) <= store.drilldownCacheTtlMs);
@@ -3367,7 +3393,7 @@
                     </div>
                     <div class="decision-line"><strong>Decision:</strong> ${esc(row.decision || '')}</div>
                     <details class="decision-logic" ${linked ? 'open' : ''}>
-                        <summary class="decision-logic-toggle" aria-label="Espandi logica" title="Espandi logica">
+                        <summary class="decision-logic-toggle" aria-label="Expand logic" title="Expand logic">
                             <span class="logic-toggle-icon" aria-hidden="true"></span>
                         </summary>
                         <div class="decision-logic-body">
@@ -3506,12 +3532,36 @@
             const layerId = `${prefix}-layer`;
             const arrowId = `${prefix}-arrow`;
             const selectedNodeId = String(store.nodeDetails?.node?.id || '');
+            const previousWeights = store.graphNodeWeights[prefix] || {};
+            const nextWeights = {};
+
+            const nodeWeight = (node) => {
+                const raw = Number(node?.meta?.weight);
+                if (Number.isFinite(raw)) return Math.max(0.1, Math.min(1.9, raw));
+                return 0.45;
+            };
+            const edgeWeight = (edge) => {
+                const raw = Number(edge?.meta?.weight);
+                if (Number.isFinite(raw)) return Math.max(0.1, Math.min(1.9, raw));
+                return 0.45;
+            };
 
             const layers = { root: [], reason: [], signal: [], agent: [], decision: [], action: [], outcome_ok: [], outcome_bad: [], other: [] };
             nodes.forEach((node) => {
                 const g = String(node.group || 'other');
                 if (layers[g]) layers[g].push(node);
                 else layers.other.push(node);
+            });
+            Object.values(layers).forEach((bucket) => {
+                bucket.sort((a, b) => {
+                    const wa = nodeWeight(a);
+                    const wb = nodeWeight(b);
+                    if (wa !== wb) return wb - wa;
+                    const ta = Number(parseTimestampMs(a?.meta?.ts || '')) || 0;
+                    const tb = Number(parseTimestampMs(b?.meta?.ts || '')) || 0;
+                    if (ta !== tb) return tb - ta;
+                    return String(a?.id || '').localeCompare(String(b?.id || ''));
+                });
             });
 
             const columns = ['root', 'reason', 'signal', 'agent', 'decision', 'action', 'outcome_ok', 'outcome_bad', 'other'];
@@ -3545,9 +3595,10 @@
                 const isLive = Boolean(edge?.meta?.live);
                 const isSelected = selectedNodeId && (String(edge.source || '') === selectedNodeId || String(edge.target || '') === selectedNodeId);
                 const edgeClass = `graph-edge ${isLive ? 'live' : ''} ${isSelected ? 'selected' : ''}`;
+                const strokeWidth = (1 + (edgeWeight(edge) * 0.9)).toFixed(2);
                 return `
                     <g class="${edgeClass}">
-                        <line class="graph-edge-line" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#45608f" stroke-width="1.2" marker-end="url(#${arrowId})" />
+                        <line class="graph-edge-line" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#45608f" stroke-width="${strokeWidth}" marker-end="url(#${arrowId})" />
                     </g>
                     <text x="${mx}" y="${my - 4}" class="graph-edge-text">${esc(edgeShort)}</text>
                     <title>${esc(edgeLabel)}</title>
@@ -3558,19 +3609,27 @@
                 const fill = groupColor(node.group);
                 const fullLabel = String(node.label || '');
                 const lines = splitGraphLabel(fullLabel, 24, 2);
+                const weight = nodeWeight(node);
+                const prevWeight = Number(previousWeights[node.id]);
+                const weightDelta = Number.isFinite(prevWeight) ? (weight - prevWeight) : 0;
+                nextWeights[node.id] = weight;
                 const isLive = Boolean(node?.meta?.live);
+                const isTriggerSource = Boolean(node?.meta?.trigger_source);
                 const isSelected = selectedNodeId && String(node.id || '') === selectedNodeId;
-                const nodeClass = `graph-node ${isLive ? 'live' : ''} ${isSelected ? 'selected' : ''}`;
+                const nodeClass = `graph-node ${isLive ? 'live' : ''} ${isSelected ? 'selected' : ''} ${isTriggerSource ? 'trigger-source' : ''} ${weightDelta > 0.03 ? 'weight-up' : ''} ${weightDelta < -0.03 ? 'weight-down' : ''}`;
+                const nodeStrokeWidth = (1.25 + (weight * 0.7)).toFixed(2);
+                const weightLabel = `w:${weight.toFixed(2)}`;
                 return `
                     <g class="${nodeClass}" data-node-id="${esc(node.id)}" style="cursor:pointer;">
-                        <rect class="graph-node-rect" x="${node.x}" y="${node.y}" width="196" height="54" rx="8" ry="8" fill="#16213d" stroke="${fill}" stroke-width="1.4"></rect>
+                        <rect class="graph-node-rect" x="${node.x}" y="${node.y}" width="196" height="54" rx="8" ry="8" fill="#16213d" stroke="${fill}" stroke-width="${nodeStrokeWidth}"></rect>
                         <text x="${node.x + 8}" y="${node.y + 17}" class="graph-node-text">${esc(lines[0] || '')}</text>
                         <text x="${node.x + 8}" y="${node.y + 30}" class="graph-node-text">${esc(lines[1] || '')}</text>
-                        <text x="${node.x + 8}" y="${node.y + 46}" class="graph-edge-text">${esc(node.group || '')}</text>
+                        <text x="${node.x + 8}" y="${node.y + 46}" class="graph-edge-text">${esc(`${node.group || ''} · ${weightLabel}`)}</text>
                         <title>${esc(fullLabel)}</title>
                     </g>
                 `;
             }).join('');
+            store.graphNodeWeights[prefix] = nextWeights;
 
             const detail = store.nodeDetails;
             const detailMeta = detail?.node?.meta && typeof detail.node.meta === 'object' ? detail.node.meta : {};
@@ -3596,12 +3655,13 @@
                 ['outcome_bad', 'Negative outcome'],
             ].map(([group, label]) => `<span class="graph-legend-item"><span class="graph-legend-dot" style="background:${groupColor(group)}"></span>${esc(label)}</span>`).join('');
             const liveCount = nodes.filter((node) => node?.meta?.live).length;
+            const avgWeight = nodes.length ? (nodes.reduce((sum, node) => sum + nodeWeight(node), 0) / nodes.length) : 0;
 
             return `
                 <div class="graph-wrap">
                     <div class="graph-summary">
-                        <div><strong>Causal path:</strong> context/ragioni → decisione → azione → outcome</div>
-                        <div class="small muted">Live nodes highlighted: ${esc(String(liveCount))} · click su un nodo per aprire il drilldown contestuale.</div>
+                        <div><strong>Causal path:</strong> context/reasons → decision → action → outcome</div>
+                        <div class="small muted">Live nodes highlighted: ${esc(String(liveCount))} · average decision weight: ${esc(avgWeight.toFixed(2))} · click a node to open contextual drilldown.</div>
                         <div class="graph-legend">${legend}</div>
                     </div>
                     ${detailHtml}
