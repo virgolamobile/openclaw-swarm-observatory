@@ -920,7 +920,7 @@ def clip_text(value, max_len=140):
 
 
 def build_causal_graph(snapshot, decisions, cron_timeline, context_roots):
-    """Build causal graph nodes/edges: root constraints -> decisions -> actions -> outcomes."""
+    """Build causal graph nodes/edges with explicit cause→effect reasoning paths."""
     nodes = []
     edges = []
     node_ids = set()
@@ -936,66 +936,118 @@ def build_causal_graph(snapshot, decisions, cron_timeline, context_roots):
             'meta': meta or {},
         })
 
-    def add_edge(source, target, label):
+    def add_edge(source, target, label, meta=None):
         edges.append({
             'source': source,
             'target': target,
             'label': clip_text(label, 72),
+            'meta': meta or {},
         })
 
     agent = snapshot.get('agent', 'Agent')
     agent_node = f'agent:{normalize_agent_name(agent)}'
-    add_node(agent_node, agent, 'agent', {'status': snapshot.get('status', 'unknown')})
+    add_node(agent_node, agent, 'agent', {
+        'status': snapshot.get('status', 'unknown'),
+        'task': snapshot.get('task', ''),
+    })
 
-    root_nodes = []
-    for idx, root in enumerate((context_roots or [])[:8]):
+    root_nodes = {}
+    for idx, root in enumerate((context_roots or [])[:6]):
         file_path = str(root.get('file', ''))
         label = os.path.basename(file_path) if file_path else f'root-{idx + 1}'
         matches = root.get('matched_anchors') or []
         node_id = f'root:{idx}'
-        add_node(node_id, label, 'root', {'file': file_path, 'anchors': matches})
-        add_edge(node_id, agent_node, 'constrain')
-        root_nodes.append((node_id, matches))
+        add_node(node_id, label, 'root', {
+            'file': file_path,
+            'anchors': matches,
+            'root_index': idx,
+            'jump_tab': 'soul',
+        })
+        add_edge(node_id, agent_node, 'context')
+        root_nodes[file_path] = node_id
 
     decision_nodes = []
-    for idx, decision in enumerate((decisions or [])[:14]):
+    for idx, decision in enumerate((decisions or [])[:12]):
         node_id = f'decision:{idx}'
         add_node(node_id, decision.get('decision', 'decision'), 'decision', {
             'ts': decision.get('ts', ''),
             'confidence': decision.get('confidence', 'n/a'),
             'why': decision.get('why', []),
+            'decision_index': idx,
+            'jump_tab': 'decisions',
         })
         add_edge(agent_node, node_id, 'decides')
+        if decision_nodes:
+            add_edge(decision_nodes[-1], node_id, 'evolves')
+
+        why_items = [str(x).strip() for x in (decision.get('why') or []) if str(x).strip()]
+        for why_idx, reason_text in enumerate(why_items[:2]):
+            reason_id = f'reason:{idx}:{why_idx}'
+            add_node(reason_id, reason_text, 'reason', {
+                'decision_index': idx,
+                'jump_tab': 'decisions',
+            })
+            add_edge(reason_id, node_id, 'motivates')
+
+        evidence_items = [str(x).strip() for x in (decision.get('evidence') or []) if str(x).strip()]
+        if evidence_items:
+            evidence_id = f'signal:{idx}'
+            add_node(evidence_id, evidence_items[0], 'signal', {
+                'decision_index': idx,
+                'jump_tab': 'decisions',
+            })
+            add_edge(evidence_id, node_id, 'supports')
+
         for root_ref in decision.get('root_causes', [])[:3]:
             ref_file = root_ref.get('file', '')
-            for root_id, _ in root_nodes:
-                root_meta = next((n for n in nodes if n['id'] == root_id), None)
-                if root_meta and root_meta.get('meta', {}).get('file') == ref_file:
-                    add_edge(root_id, node_id, 'influences')
+            root_id = root_nodes.get(ref_file)
+            if root_id:
+                add_edge(root_id, node_id, 'constrains')
         decision_nodes.append(node_id)
 
+    decision_times = []
+    for idx, decision in enumerate((decisions or [])[:12]):
+        decision_times.append((idx, parse_any_ts(decision.get('ts'))))
+
     action_nodes = []
-    for idx, row in enumerate((cron_timeline or [])[-18:]):
+    eligible_actions = []
+    for abs_idx, row in enumerate(cron_timeline or []):
         kind = str(row.get('kind', 'event'))
         if kind not in {'finished', 'next_run', 'started', 'run'}:
             continue
-        node_id = f'action:{idx}'
+        eligible_actions.append((abs_idx, row))
+
+    for abs_idx, row in eligible_actions[-14:]:
+        node_id = f'action:{abs_idx}'
         summary = row.get('summary') or row.get('job') or kind
         add_node(node_id, summary, 'action', {
             'ts': row.get('ts', ''),
             'job': row.get('job', ''),
             'kind': kind,
             'status': row.get('status', ''),
+            'action_index': abs_idx,
+            'jump_tab': 'cron_timeline',
         })
+
+        linked_decision = None
+        action_ts = parse_any_ts(row.get('ts'))
+        if decision_times:
+            prior = [item for item in decision_times if item[1] <= action_ts and item[1] > 0]
+            if prior:
+                linked_decision = prior[-1][0]
+            else:
+                linked_decision = min(len(decision_times) - 1, abs_idx)
+
         if decision_nodes:
-            add_edge(decision_nodes[min(idx, len(decision_nodes) - 1)], node_id, 'triggers')
+            decision_index = linked_decision if linked_decision is not None else min(abs_idx, len(decision_nodes) - 1)
+            add_edge(decision_nodes[decision_index], node_id, 'executes')
         else:
             add_edge(agent_node, node_id, 'acts')
-        action_nodes.append((node_id, row))
+        action_nodes.append((node_id, row, abs_idx))
 
-    for idx, (action_id, row) in enumerate(action_nodes[:14]):
+    for action_id, row, abs_idx in action_nodes:
         status = str(row.get('status', 'unknown')).lower()
-        outcome_id = f'outcome:{idx}'
+        outcome_id = f'outcome:{abs_idx}'
         if status in {'ok', 'success', 'scheduled'}:
             outcome_label = f"Outcome {status}: {row.get('job', '')}"
             group = 'outcome_ok'
@@ -1005,8 +1057,46 @@ def build_causal_graph(snapshot, decisions, cron_timeline, context_roots):
         add_node(outcome_id, outcome_label, group, {
             'status': row.get('status', ''),
             'ts': row.get('ts', ''),
+            'action_index': abs_idx,
+            'jump_tab': 'cron_timeline',
         })
-        add_edge(action_id, outcome_id, 'results')
+        add_edge(action_id, outcome_id, 'produces')
+
+    def mark_latest(group_name, limit=1):
+        candidates = [n for n in nodes if n.get('group') == group_name]
+        if not candidates:
+            return []
+        scored = []
+        for node in candidates:
+            ts_score = parse_any_ts(node.get('meta', {}).get('ts'))
+            scored.append((ts_score, str(node.get('id', '')), node))
+        scored.sort(key=lambda item: (item[0], item[1]), reverse=True)
+        picked = [item[2] for item in scored[:limit]]
+        for node in picked:
+            node.setdefault('meta', {})['live'] = True
+        return picked
+
+    live_nodes = []
+    live_nodes.extend(mark_latest('decision', limit=2))
+    live_nodes.extend(mark_latest('action', limit=2))
+    live_nodes.extend(mark_latest('outcome_ok', limit=1))
+    live_nodes.extend(mark_latest('outcome_bad', limit=1))
+
+    for node in live_nodes:
+        node_id = str(node.get('id', ''))
+        if node_id.startswith('decision:'):
+            decision_idx = node.get('meta', {}).get('decision_index')
+            if isinstance(decision_idx, int):
+                for n in nodes:
+                    if n.get('id', '').startswith(f'reason:{decision_idx}:') or n.get('id', '') == f'signal:{decision_idx}':
+                        n.setdefault('meta', {})['live'] = True
+
+    live_ids = {str(n.get('id', '')) for n in nodes if n.get('meta', {}).get('live')}
+    for edge in edges:
+        source = str(edge.get('source', ''))
+        target = str(edge.get('target', ''))
+        if source in live_ids or target in live_ids:
+            edge.setdefault('meta', {})['live'] = True
 
     return {
         'nodes': nodes,
