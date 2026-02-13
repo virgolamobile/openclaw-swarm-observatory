@@ -654,40 +654,39 @@
             margin: 2px 0;
             word-break: break-word;
         }
-        .reasoning-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-            gap: 7px;
+        .reasoning-compact {
+            background: rgba(14, 24, 45, .58);
+            border-radius: 8px;
+            padding: 5px 7px;
             margin-top: 7px;
         }
-        .reason-block {
-            border: 1px solid rgba(255,255,255,.11);
-            border-radius: 8px;
-            background: rgba(14, 24, 45, .7);
-            padding: 7px 8px;
-            min-width: 0;
+        .reasoning-table {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+            font-size: .72rem;
+            line-height: 1.25;
+            color: #d9e5ff;
         }
-        .reason-block-title {
-            font-size: .68rem;
-            text-transform: uppercase;
-            letter-spacing: .4px;
+        .reasoning-table th,
+        .reasoning-table td {
+            text-align: left;
+            vertical-align: top;
+            padding: 1px 0;
+            border: 0;
+        }
+        .reasoning-table th {
+            width: 72px;
+            padding-right: 8px;
             color: #9db2df;
-            margin-bottom: 4px;
+            text-transform: uppercase;
+            letter-spacing: .35px;
+            font-size: .65rem;
+            font-weight: 500;
         }
-        .reason-block-body {
-            font-size: .75rem;
-            color: #d9e5ff;
-            line-height: 1.35;
-            word-break: break-word;
+        .reasoning-table td {
+            overflow-wrap: anywhere;
         }
-        .reason-block-list {
-            margin: 0;
-            padding-left: 16px;
-            color: #d9e5ff;
-            font-size: .74rem;
-            line-height: 1.3;
-        }
-        .reason-block-list li { margin: 2px 0; }
         .reason-tag {
             display: inline-flex;
             align-items: center;
@@ -699,6 +698,133 @@
             padding: 1px 7px;
             margin-left: 6px;
             vertical-align: middle;
+        }
+        .reasoning-details {
+            margin-top: 4px;
+        }
+        .reasoning-details summary {
+            cursor: pointer;
+            color: #cfe0ff;
+            font-size: .69rem;
+            line-height: 1.25;
+        }
+        .reasoning-details summary::marker {
+            color: #9fb8f6;
+        }
+        .reasoning-details-row {
+            margin-top: 4px;
+            display: grid;
+            grid-template-columns: 72px 1fr;
+            gap: 8px;
+            align-items: start;
+        }
+        .reasoning-details-label {
+            color: #9db2df;
+            text-transform: uppercase;
+            letter-spacing: .35px;
+            font-size: .65rem;
+        }
+        .reasoning-compact-list {
+            margin: 3px 0 0;
+            padding-left: 14px;
+            font-size: .7rem;
+            color: #cbdaf8;
+            line-height: 1.25;
+        }
+        .reasoning-compact-list li {
+            margin: 1px 0;
+        }
+        .decision-order-hint {
+            margin-bottom: 6px;
+            color: #a9b7d9;
+            font-size: .72rem;
+        }
+        .decision-timeline-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 10px;
+            margin-bottom: 6px;
+        }
+        .decision-meta-left {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            flex-wrap: wrap;
+            min-width: 0;
+        }
+        .decision-time-box {
+            text-align: right;
+            flex: 0 0 auto;
+        }
+        .decision-time-strong {
+            font-size: .82rem;
+            color: #ecf3ff;
+            font-weight: 600;
+            line-height: 1.2;
+            letter-spacing: .1px;
+        }
+        .decision-pills {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            flex-wrap: wrap;
+        }
+        .trace-item.decision-item {
+            border-color: rgba(122,163,255,.28);
+            background: linear-gradient(180deg, rgba(20,33,61,.9), rgba(16,27,50,.9));
+            box-shadow: inset 0 0 0 1px rgba(122,163,255,.08);
+        }
+        .trace-item.decision-item.alt {
+            background: linear-gradient(180deg, rgba(18,30,55,.9), rgba(14,24,46,.9));
+        }
+        .trace-item.decision-item .decision-line {
+            margin-top: 4px;
+            border-left: 2px solid rgba(91,140,255,.35);
+            padding-left: 8px;
+        }
+        .decision-logic {
+            margin-top: 6px;
+            padding-top: 2px;
+        }
+        .decision-logic-toggle {
+            list-style: none;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 20px;
+            height: 20px;
+            border-radius: 999px;
+            border: 1px solid rgba(91,140,255,.42);
+            background: rgba(91,140,255,.12);
+            color: #dce8ff;
+            user-select: none;
+        }
+        .decision-logic-toggle::marker,
+        .decision-logic-toggle::-webkit-details-marker {
+            display: none;
+            content: '';
+        }
+        .logic-toggle-icon {
+            width: 7px;
+            height: 7px;
+            border-right: 2px solid currentColor;
+            border-bottom: 2px solid currentColor;
+            transform: rotate(-45deg);
+            transition: transform .14s ease;
+            margin-right: 1px;
+        }
+        .decision-logic[open] .logic-toggle-icon {
+            transform: rotate(45deg);
+            margin-top: -1px;
+        }
+        .decision-logic-body {
+            margin-top: 6px;
+            border-radius: 8px;
+            border: 1px solid rgba(255,255,255,.11);
+            background: rgba(12,20,38,.54);
+            padding: 6px 7px;
         }
         .investigation-breadcrumb {
             border: 1px dashed rgba(255,255,255,.2);
@@ -1020,18 +1146,16 @@
 
         .content-updated {
             animation: contentFadeIn .24s ease-out;
-            will-change: opacity, transform, filter;
+            will-change: opacity, filter;
         }
 
         @keyframes contentFadeIn {
             from {
                 opacity: .96;
-                transform: translateY(1px);
                 filter: brightness(1.03);
             }
             to {
                 opacity: 1;
-                transform: translateY(0);
                 filter: brightness(1);
             }
         }
@@ -1393,51 +1517,58 @@
             };
         }
 
-        function renderReasonBlock(title, value) {
-            if (Array.isArray(value)) {
-                if (!value.length) return '';
-                return `
-                    <section class="reason-block">
-                        <div class="reason-block-title">${esc(title)}</div>
-                        <ul class="reason-block-list">${value.map((item) => `<li>${esc(item)}</li>`).join('')}</ul>
-                    </section>
-                `;
-            }
-
-            const text = String(value || '').trim();
-            if (!text) return '';
-            return `
-                <section class="reason-block">
-                    <div class="reason-block-title">${esc(title)}</div>
-                    <div class="reason-block-body">${esc(text)}</div>
-                </section>
-            `;
-        }
-
         function renderHumanReasoning(row) {
             const chunks = extractReasoningChunks(row || {});
-            const outcomeTitle = chunks.decisionTag
-                ? `Outcome <span class="reason-tag">${esc(chunks.decisionTag)}</span>`
-                : 'Outcome';
 
-            const outcomeHtml = `
-                <section class="reason-block">
-                    <div class="reason-block-title">${outcomeTitle}</div>
-                    <div class="reason-block-body">${esc(chunks.outcome)}</div>
-                </section>
+            const outcomeText = chunks.decisionTag
+                ? `${chunks.outcome} (${chunks.decisionTag})`
+                : chunks.outcome;
+
+            const triggerText = shortText(chunks.trigger[0] || chunks.context[0] || '—', 110);
+            const constraintsText = shortText(chunks.constraints[0] || '—', 100);
+            const signalText = shortText(chunks.signals[0] || '—', 100);
+            const evidenceText = shortText(chunks.evidence[0] || '—', 110);
+            const sourceText = shortText(chunks.sourceFiles[0] || '—', 100);
+
+            const detailSections = [
+                { label: 'Signals', items: chunks.signals },
+                { label: 'Trigger', items: chunks.trigger },
+                { label: 'Constraints', items: chunks.constraints },
+                { label: 'Evidence', items: chunks.evidence },
+                { label: 'Sources', items: chunks.sourceFiles },
+            ].filter((entry) => Array.isArray(entry.items) && entry.items.length > 1);
+
+            const detailsHtml = detailSections.length ? `
+                <details class="reasoning-details">
+                    <summary>Expand reasoning details (${detailSections.length} sections)</summary>
+                    ${detailSections.map((entry) => `
+                        <div class="reasoning-details-row">
+                            <span class="reasoning-details-label">${esc(entry.label)}</span>
+                            <ul class="reasoning-compact-list">${entry.items.map((item) => `<li>${esc(item)}</li>`).join('')}</ul>
+                        </div>
+                    `).join('')}
+                </details>
+            ` : '';
+
+            return `
+                <div class="reasoning-compact">
+                    <table class="reasoning-table" role="presentation">
+                        <tbody>
+                            <tr>
+                                <th>Outcome</th>
+                                <td>${esc(outcomeText)} ${chunks.decisionTag ? `<span class="reason-tag">${esc(chunks.decisionTag)}</span>` : ''}</td>
+                            </tr>
+                            ${chunks.speaker ? `<tr><th>Speaker</th><td>${esc(chunks.speaker)}</td></tr>` : ''}
+                            <tr><th>Signal</th><td>${esc(signalText)}</td></tr>
+                            <tr><th>Trigger</th><td>${esc(triggerText)}</td></tr>
+                            <tr><th>Rule</th><td>${esc(constraintsText)}</td></tr>
+                            <tr><th>Evidence</th><td>${esc(evidenceText)}</td></tr>
+                            <tr><th>Source</th><td>${esc(sourceText)}</td></tr>
+                        </tbody>
+                    </table>
+                    ${detailsHtml}
+                </div>
             `;
-
-            const blocks = [
-                chunks.speaker ? renderReasonBlock('Speaker', chunks.speaker) : '',
-                renderReasonBlock('Operational signals', chunks.signals),
-                renderReasonBlock('Trigger', chunks.trigger),
-                renderReasonBlock('Constraints & goals', chunks.constraints),
-                renderReasonBlock('Context', chunks.context),
-                renderReasonBlock('Evidence trail', chunks.evidence),
-                renderReasonBlock('Source files', chunks.sourceFiles),
-            ].filter(Boolean);
-
-            return `<div class="reasoning-grid">${outcomeHtml}${blocks.join('')}</div>`;
         }
 
         function parseTokenCount(item) {
@@ -1490,6 +1621,29 @@
             return Number.isFinite(candidate) ? candidate : null;
         }
 
+        function formatDecisionTime(tsValue, tsMs) {
+            const ms = Number.isFinite(tsMs) ? tsMs : parseTimestampMs(tsValue);
+            if (!Number.isFinite(ms)) {
+                return {
+                    strong: 'Unknown time',
+                    raw: String(tsValue || '—'),
+                };
+            }
+
+            const dt = new Date(ms);
+            return {
+                strong: dt.toLocaleString(undefined, {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                }),
+                raw: String(tsValue || dt.toISOString()),
+            };
+        }
+
         function getAgentFreshness(item) {
             const rawCandidates = [
                 item?.last_seen_ts,
@@ -1535,9 +1689,10 @@
                     this.setAttribute('role', 'button');
                     this.setAttribute('tabindex', '0');
                     this.addEventListener('click', (event) => {
-                        const helpBtn = event.target.closest('[data-doc]');
+                        const helpBtn = event.target.closest('.help-btn[data-doc]');
                         if (!helpBtn) return;
-                        event.stopPropagation();
+                        event.preventDefault();
+                        event.stopImmediatePropagation();
                         openDocsModal(helpBtn.dataset.doc || 'INDEX.md', helpBtn.dataset.docAnchor || null);
                     });
                     this._bound = true;
@@ -2786,7 +2941,43 @@
                 return;
             }
 
-            const rows = (depth.decision_trace || []).slice(0, 80);
+            const rowsRaw = (depth.decision_trace || []).slice(0, 80);
+            const rowsSorted = rowsRaw
+                .map((row, originalIndex) => ({
+                    row,
+                    originalIndex,
+                    tsMs: parseTimestampMs(row?.ts),
+                }))
+                .sort((a, b) => {
+                    const aTs = Number.isFinite(a.tsMs) ? a.tsMs : -Infinity;
+                    const bTs = Number.isFinite(b.tsMs) ? b.tsMs : -Infinity;
+                    if (aTs !== bTs) return bTs - aTs;
+                    return a.originalIndex - b.originalIndex;
+                });
+
+            const rows = [];
+            for (const entry of rowsSorted) {
+                const row = entry.row || {};
+                const signature = [
+                    String(row.decision || '').replace(/\s+/g, ' ').trim(),
+                    normalizeTextList(row.why || []).join('|'),
+                    normalizeTextList(row.evidence || []).join('|'),
+                    formatRootCauseItems(row.root_causes).join('|'),
+                ].join('||');
+
+                const last = rows[rows.length - 1];
+                if (last && last.signature === signature) {
+                    last.repeatCount += 1;
+                    continue;
+                }
+
+                rows.push({
+                    ...entry,
+                    signature,
+                    repeatCount: 1,
+                });
+            }
+
             const backlink = store.overviewBacklink;
             const showBacklink = backlink && String(backlink.agent || '') === String(payload.agent || '');
             const banner = showBacklink ? `
@@ -2798,21 +2989,39 @@
                     </div>
                 </div>
             ` : '';
-            body.innerHTML = rows.length ? `${banner}${rows.map((row, idx) => {
-                const linked = showBacklink && Number(backlink.decisionIndex) === idx ? 'linked' : '';
+            body.innerHTML = rows.length ? `${banner}<div class="decision-order-hint">Timeline order: newest → oldest.</div>${rows.map((entry, idx) => {
+                const row = entry.row || {};
+                const linked = showBacklink && Number(backlink.decisionIndex) === Number(entry.originalIndex) ? 'linked' : '';
+                const alt = (idx % 2 === 1) ? 'alt' : '';
+                const ts = formatDecisionTime(row.ts, entry.tsMs);
                 const whyBlock = renderCollapsibleTraceList('Why', row.why || [], { previewLimit: 2, open: linked });
                 const evidenceBlock = renderCollapsibleTraceList('Runtime evidence', row.evidence || [], { previewLimit: 2 });
                 const rootCauseBlock = renderCollapsibleTraceList('Root causes (SOUL/files)', formatRootCauseItems(row.root_causes), { previewLimit: 1 });
                 const reasoningBlock = renderHumanReasoning(row);
                 return `
-                <div class="trace-item ${linked}">
-                    <div><span class="pill">confidence ${esc(row.confidence || 'n/a')}</span><span class="pill">${esc(row.source || '')}</span></div>
-                    <div><strong>Decision:</strong> ${esc(row.decision || '')}</div>
-                    ${reasoningBlock}
-                    ${whyBlock}
-                    ${evidenceBlock}
-                    ${rootCauseBlock}
-                    <div class="when">${esc(row.ts || '')}</div>
+                <div class="trace-item decision-item ${alt} ${linked}">
+                    <div class="decision-timeline-head">
+                        <div class="decision-meta-left">
+                            <span class="pill">confidence ${esc(row.confidence || 'n/a')}</span>
+                            <span class="pill">${esc(row.source || '')}</span>
+                            ${entry.repeatCount > 1 ? `<span class="pill">repeated ×${esc(String(entry.repeatCount))}</span>` : ''}
+                        </div>
+                        <div class="decision-time-box">
+                            <div class="decision-time-strong">${esc(ts.strong)}</div>
+                        </div>
+                    </div>
+                    <div class="decision-line"><strong>Decision:</strong> ${esc(row.decision || '')}</div>
+                    <details class="decision-logic" ${linked ? 'open' : ''}>
+                        <summary class="decision-logic-toggle" aria-label="Espandi logica" title="Espandi logica">
+                            <span class="logic-toggle-icon" aria-hidden="true"></span>
+                        </summary>
+                        <div class="decision-logic-body">
+                            ${reasoningBlock}
+                            ${whyBlock}
+                            ${evidenceBlock}
+                            ${rootCauseBlock}
+                        </div>
+                    </details>
                 </div>
                 `;
             }).join('')}` : 'Decision trace not available.';
@@ -3141,12 +3350,16 @@
                 store.insights = payload;
 
                 const agents = Array.isArray(payload.agents) ? payload.agents : [];
+                store.agents.clear();
                 agents.forEach((agent) => {
                     if (agent && agent.agent) store.agents.set(agent.agent, agent);
                 });
 
-                if (!store.selectedAgent && agents.length > 0) {
-                    store.selectedAgent = agents[0].agent;
+                const orderedAgentNames = Array.from(store.agents.keys()).sort((a, b) => String(a).localeCompare(String(b)));
+                const selectedPresent = orderedAgentNames.some((name) => String(name) === String(store.selectedAgent || ''));
+
+                if (!selectedPresent) {
+                    store.selectedAgent = orderedAgentNames.length ? orderedAgentNames[0] : null;
                 }
                 if (store.selectedAgent && !shouldDeferDrilldownRefresh()) {
                     await openDrilldown(store.selectedAgent, { background: true });
@@ -3226,8 +3439,12 @@
                 node.addEventListener('click', () => openDocsModal(node.dataset.doc || 'INDEX.md', node.dataset.docAnchor || null));
             });
             document.querySelectorAll('.kpi[data-overview]').forEach((node) => {
-                node.addEventListener('click', () => openOverviewModal(node.dataset.overview || 'agents'));
+                node.addEventListener('click', (event) => {
+                    if (event.target && event.target.closest('.help-btn')) return;
+                    openOverviewModal(node.dataset.overview || 'agents');
+                });
                 node.addEventListener('keydown', (event) => {
+                    if (event.target && event.target.closest('.help-btn')) return;
                     if (event.key === 'Enter' || event.key === ' ') {
                         event.preventDefault();
                         openOverviewModal(node.dataset.overview || 'agents');
