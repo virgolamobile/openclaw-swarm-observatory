@@ -364,6 +364,86 @@
             display: none;
         }
 
+        .panel-head {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 10px;
+        }
+        .panel-head h2 {
+            margin-right: 8px;
+        }
+        .telemetry-warning-btn {
+            border: 1px solid rgba(245,158,11,.55);
+            background: linear-gradient(180deg, rgba(56,38,13,.86), rgba(30,22,11,.95));
+            color: #f8d28a;
+            border-radius: 8px;
+            width: 30px;
+            height: 30px;
+            font-size: 16px;
+            line-height: 1;
+            cursor: pointer;
+            flex: 0 0 auto;
+            box-shadow: inset 0 0 0 1px rgba(255,255,255,.05);
+        }
+        .telemetry-warning-btn.bad {
+            border-color: rgba(239,68,68,.62);
+            background: linear-gradient(180deg, rgba(62,17,17,.88), rgba(30,12,12,.95));
+            color: #ffb3b3;
+        }
+        .telemetry-warning-btn.hidden {
+            display: none;
+        }
+        .telemetry-warning-btn:hover {
+            filter: brightness(1.08);
+        }
+
+        .telemetry-modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(5,8,16,.72);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 40;
+            padding: 18px;
+        }
+        .telemetry-modal.open { display: flex; }
+        .telemetry-card {
+            width: min(760px, 96vw);
+            max-height: 86vh;
+            overflow: auto;
+            background: #101a31;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 12px;
+        }
+        .telemetry-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        .telemetry-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 8px;
+        }
+        .telemetry-block {
+            border: 1px solid rgba(255,255,255,.08);
+            border-radius: 8px;
+            padding: 8px;
+            background: rgba(12,20,38,.72);
+        }
+        .telemetry-block h4 {
+            margin: 0 0 6px;
+            font-size: .78rem;
+            color: #cfe0ff;
+            text-transform: uppercase;
+            letter-spacing: .35px;
+        }
+
         .telemetry-check {
             margin: -4px 0 10px;
             font-size: .73rem;
@@ -912,11 +992,13 @@
     <main class="layout">
         <section>
             <article class="panel">
-                <h2 class="title-with-help">Swarm Overview (click to enter deep drilldown)
-                    <button class="help-btn" data-doc="03-ui-ux-guide.md" data-doc-anchor="03-ui-ux-guide.md-swarm-overview-section" title="Open section guide">?</button>
-                </h2>
+                <div class="panel-head">
+                    <h2 class="title-with-help">Swarm Overview (click to enter deep drilldown)
+                        <button class="help-btn" data-doc="03-ui-ux-guide.md" data-doc-anchor="03-ui-ux-guide.md-swarm-overview-section" title="Open section guide">?</button>
+                    </h2>
+                    <button id="telemetry-warning-btn" class="telemetry-warning-btn hidden" title="Open telemetry warning details" aria-label="Open telemetry warning details">⚠️</button>
+                </div>
                 <div id="selection-hint" class="selection-hint">1) Select an agent to unlock deep investigation and causal graph analysis.</div>
-                <div id="telemetry-check" class="telemetry-check">Telemetry check: waiting for agent metrics…</div>
                 <div id="agent-grid"></div>
             </article>
             <article class="panel">
@@ -985,6 +1067,22 @@
         </div>
     </div>
 
+    <div id="telemetry-modal" class="telemetry-modal" aria-hidden="true">
+        <div class="telemetry-card" role="dialog" aria-modal="true" aria-label="Telemetry warning details">
+            <div class="telemetry-head">
+                <strong>Telemetry warning details</strong>
+                <button class="header-link" id="close-telemetry-modal">Close</button>
+            </div>
+            <div class="telemetry-grid">
+                <div class="telemetry-block"><h4>errore</h4><div id="telemetry-detail-error">—</div></div>
+                <div class="telemetry-block"><h4>motivo errore</h4><div id="telemetry-detail-reason">—</div></div>
+                <div class="telemetry-block"><h4>approfondimento</h4><div id="telemetry-detail-deep">—</div></div>
+                <div class="telemetry-block"><h4>guida</h4><div id="telemetry-detail-guide">—</div></div>
+                <div class="telemetry-block"><h4>cosa fare</h4><div id="telemetry-detail-action">—</div></div>
+            </div>
+        </div>
+    </div>
+
     <script>
         // Centralized frontend state. Keeps selected agent, active tab, graph viewport and latest payloads.
         const store = {
@@ -1009,6 +1107,7 @@
             overviewSelectedAgent: null,
             overviewDeepByAgent: {},
             overviewBacklink: null,
+            telemetryStatus: null,
             agentTelemetryHistory: {},
             refreshInFlight: false,
             refreshQueued: false,
@@ -1321,40 +1420,79 @@
         }
 
         function renderTelemetryCheck(rows) {
-            const node = document.getElementById('telemetry-check');
-            if (!node) return;
+            const button = document.getElementById('telemetry-warning-btn');
+            if (!button) return;
             const report = store.insights?.telemetry_gaps || null;
             const summary = report?.summary || null;
             const total = Number(summary?.agents ?? rows.length) || 0;
+            const tokOk = Number(summary?.tokens_numeric ?? rows.filter((r) => Number.isFinite(parseTokenCount(r))).length) || 0;
+
+            button.classList.remove('bad');
             if (!total) {
-                node.className = 'telemetry-check';
-                node.textContent = 'Telemetry check: waiting for agent metrics…';
+                store.telemetryStatus = null;
+                button.classList.add('hidden');
                 return;
             }
 
-            const tokOk = Number(summary?.tokens_numeric ?? rows.filter((r) => Number.isFinite(parseTokenCount(r))).length) || 0;
             const missingAgents = Array.isArray(report?.agents) ? report.agents : [];
-            const missingPreview = missingAgents
+            const missingTokenAgents = missingAgents
                 .filter((it) => Array.isArray(it?.missing) && it.missing.includes('tokens'))
-                .slice(0, 3)
                 .map((it) => String(it?.agent || ''))
-                .filter(Boolean)
-                .join(', ');
+                .filter(Boolean);
+            const missingPreview = missingTokenAgents.slice(0, 5).join(', ');
 
             if (tokOk === 0) {
-                node.className = 'telemetry-check bad';
-                node.textContent = `Telemetry check: no token fields found in live payload (${total} agents observed). Token chart stays flat until source metrics arrive.${missingPreview ? ` Missing: ${missingPreview}.` : ''}`;
+                store.telemetryStatus = {
+                    severity: 'bad',
+                    error: 'No numeric token telemetry available',
+                    reason: `0/${total} agents expose numeric token fields.${missingPreview ? ` Missing: ${missingPreview}.` : ''}`,
+                    deep: 'The mini token chart and token trend analysis require numeric token counters in live payloads.',
+                    guide: 'Check the agent payload schema and ensure token counters are emitted as numeric fields.',
+                    action: 'Update the emitting agents to include token metrics, then refresh the dashboard.',
+                };
+                button.classList.remove('hidden');
+                button.classList.add('bad');
                 return;
             }
 
             if (tokOk < total) {
-                node.className = 'telemetry-check warn';
-                node.textContent = `Telemetry check: Tok ${tokOk}/${total} agents with numeric data.${missingPreview ? ` Missing: ${missingPreview}.` : ''}`;
+                store.telemetryStatus = {
+                    severity: 'warn',
+                    error: 'Partial token telemetry coverage',
+                    reason: `Only ${tokOk}/${total} agents provide numeric token data.${missingPreview ? ` Missing: ${missingPreview}.` : ''}`,
+                    deep: 'Charts are correct for agents with data, but cross-agent comparisons are incomplete until missing metrics are provided.',
+                    guide: 'Inspect `insights.telemetry_gaps` and align token fields across all agent payloads.',
+                    action: 'Add token metrics for missing agents and keep field names/types consistent.',
+                };
+                button.classList.remove('hidden');
                 return;
             }
 
-            node.className = 'telemetry-check';
-            node.textContent = `Telemetry check: Tok ${tokOk}/${total} (stream healthy).`;
+            store.telemetryStatus = null;
+            button.classList.add('hidden');
+        }
+
+        function openTelemetryModal() {
+            const modal = document.getElementById('telemetry-modal');
+            if (!modal) return;
+            const status = store.telemetryStatus;
+            if (!status) return;
+
+            document.getElementById('telemetry-detail-error').textContent = status.error || '—';
+            document.getElementById('telemetry-detail-reason').textContent = status.reason || '—';
+            document.getElementById('telemetry-detail-deep').textContent = status.deep || '—';
+            document.getElementById('telemetry-detail-guide').textContent = status.guide || '—';
+            document.getElementById('telemetry-detail-action').textContent = status.action || '—';
+
+            modal.classList.add('open');
+            modal.setAttribute('aria-hidden', 'false');
+        }
+
+        function closeTelemetryModal() {
+            const modal = document.getElementById('telemetry-modal');
+            if (!modal) return;
+            modal.classList.remove('open');
+            modal.setAttribute('aria-hidden', 'true');
         }
 
         function renderAgentTelemetryCharts(rows) {
@@ -2813,6 +2951,8 @@
             document.getElementById('open-docs-index').addEventListener('click', () => openDocsModal('INDEX.md'));
             document.getElementById('close-docs').addEventListener('click', closeDocsModal);
             document.getElementById('close-overview').addEventListener('click', closeOverviewModal);
+            document.getElementById('close-telemetry-modal').addEventListener('click', closeTelemetryModal);
+            document.getElementById('telemetry-warning-btn').addEventListener('click', openTelemetryModal);
             document.querySelectorAll('.help-btn').forEach((node) => {
                 node.addEventListener('click', () => openDocsModal(node.dataset.doc || 'INDEX.md', node.dataset.docAnchor || null));
             });
@@ -2830,6 +2970,9 @@
             });
             document.getElementById('overview-modal').addEventListener('click', (event) => {
                 if (event.target && event.target.id === 'overview-modal') closeOverviewModal();
+            });
+            document.getElementById('telemetry-modal').addEventListener('click', (event) => {
+                if (event.target && event.target.id === 'telemetry-modal') closeTelemetryModal();
             });
             document.getElementById('investigation-breadcrumb').addEventListener('click', async (event) => {
                 const node = event.target.closest('[data-bc-action]');
