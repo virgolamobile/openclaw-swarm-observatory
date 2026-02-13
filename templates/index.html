@@ -3759,6 +3759,15 @@
             const viewport = getGraphViewport(prefix);
             applyGraphTransform(prefix);
 
+            if (stage._graphHandlers) {
+                const prev = stage._graphHandlers;
+                stage.removeEventListener('mousedown', prev.onMouseDown);
+                stage.removeEventListener('wheel', prev.onWheel);
+                stage.removeEventListener('dblclick', prev.onDblClick);
+                window.removeEventListener('mouseup', prev.onMouseUp);
+                window.removeEventListener('mousemove', prev.onMouseMove);
+            }
+
             layer.querySelectorAll('.graph-node').forEach((node) => {
                 node.addEventListener('click', (ev) => {
                     ev.stopPropagation();
@@ -3771,18 +3780,20 @@
             let lastX = 0;
             let lastY = 0;
 
-            stage.onmousedown = (ev) => {
+            const onMouseDown = (ev) => {
+                if (ev.button !== 0) return;
+                ev.preventDefault();
                 dragging = true;
                 stage.classList.add('dragging');
                 lastX = ev.clientX;
                 lastY = ev.clientY;
                 store.graphInteractionTs = Date.now();
             };
-            window.onmouseup = () => {
+            const onMouseUp = () => {
                 dragging = false;
                 stage.classList.remove('dragging');
             };
-            window.onmousemove = (ev) => {
+            const onMouseMove = (ev) => {
                 if (!dragging) return;
                 const dx = ev.clientX - lastX;
                 const dy = ev.clientY - lastY;
@@ -3793,20 +3804,27 @@
                 store.graphInteractionTs = Date.now();
                 applyGraphTransform(prefix);
             };
-            stage.onwheel = (ev) => {
+            const onWheel = (ev) => {
                 ev.preventDefault();
                 const delta = ev.deltaY < 0 ? 1.08 : 0.92;
                 viewport.scale = Math.max(0.25, Math.min(3.4, viewport.scale * delta));
                 store.graphInteractionTs = Date.now();
                 applyGraphTransform(prefix);
             };
-            stage.ondblclick = () => {
+            const onDblClick = () => {
                 viewport.scale = 1;
                 viewport.tx = 0;
                 viewport.ty = 0;
                 store.graphInteractionTs = Date.now();
                 applyGraphTransform(prefix);
             };
+
+            stage.addEventListener('mousedown', onMouseDown);
+            stage.addEventListener('wheel', onWheel, { passive: false });
+            stage.addEventListener('dblclick', onDblClick);
+            window.addEventListener('mouseup', onMouseUp);
+            window.addEventListener('mousemove', onMouseMove);
+            stage._graphHandlers = { onMouseDown, onMouseUp, onMouseMove, onWheel, onDblClick };
         }
 
         function renderKpiCron() {

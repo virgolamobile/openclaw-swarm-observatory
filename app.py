@@ -1142,6 +1142,7 @@ def build_causal_graph(snapshot, decisions, cron_timeline, context_roots):
 
     now_ts = time.time()
     live_tail_sec = 5.0
+    snapshot_last_seen_ts = parse_any_ts(snapshot.get('last_seen'))
 
     def set_node_live(node_id, start_ts, activity_duration_sec):
         if not node_id:
@@ -1162,6 +1163,16 @@ def build_causal_graph(snapshot, decisions, cron_timeline, context_roots):
         meta['activity_duration_sec'] = duration
         return True
 
+    def set_node_live_window(node_id, start_ts, end_ts, min_duration_sec=0.6):
+        if not node_id:
+            return False
+        if not isinstance(start_ts, (int, float)) or start_ts <= 0:
+            return False
+        if not isinstance(end_ts, (int, float)) or end_ts <= 0:
+            return False
+        effective_end = max(end_ts, start_ts + float(min_duration_sec))
+        return set_node_live(node_id, start_ts, max(0.0, effective_end - start_ts))
+
     decision_ts_by_idx = {}
     for idx, ts in decision_times:
         decision_ts_by_idx[idx] = ts
@@ -1173,14 +1184,14 @@ def build_causal_graph(snapshot, decisions, cron_timeline, context_roots):
             continue
         if idx > 0:
             newer_ts = decision_ts_by_idx.get(idx - 1, 0.0)
-            if newer_ts > start_ts:
-                activity_sec = min(max(newer_ts - start_ts, 0.8), 180.0)
-            else:
-                activity_sec = 1.6
+            end_ts = newer_ts if newer_ts > start_ts else (start_ts + 1.2)
         else:
-            activity_sec = min(max(now_ts - start_ts, 1.6), 180.0)
+            if snapshot_last_seen_ts > 0 and snapshot_last_seen_ts >= start_ts:
+                end_ts = min(snapshot_last_seen_ts, now_ts)
+            else:
+                end_ts = min(now_ts, start_ts + 1.8)
 
-        if set_node_live(decision_id, start_ts, activity_sec):
+        if set_node_live_window(decision_id, start_ts, end_ts, min_duration_sec=0.8):
             live_decision_nodes.append((decision_id, start_ts))
             decision_node = node_by_id.get(decision_id) or {}
             decision_idx = decision_node.get('meta', {}).get('decision_index')
@@ -1188,7 +1199,7 @@ def build_causal_graph(snapshot, decisions, cron_timeline, context_roots):
                 for n in nodes:
                     nid = str(n.get('id', ''))
                     if nid.startswith(f'reason:{decision_idx}:') or nid == f'signal:{decision_idx}':
-                        set_node_live(nid, start_ts, activity_sec)
+                        set_node_live_window(nid, start_ts, end_ts, min_duration_sec=0.8)
 
     live_action_nodes = []
     for action_id, row, _abs_idx, _decision_id in action_nodes:
@@ -1203,12 +1214,21 @@ def build_causal_graph(snapshot, decisions, cron_timeline, context_roots):
         raw_duration_ms = row.get('duration_ms')
         if isinstance(raw_duration_ms, (int, float)) and raw_duration_ms > 0:
             duration_sec = float(raw_duration_ms) / 1000.0
+            end_ts = start_ts + duration_sec
         elif kind in {'started', 'run'}:
-            duration_sec = min(max(now_ts - start_ts, 3.0), 240.0)
+            if snapshot_last_seen_ts > 0 and snapshot_last_seen_ts >= start_ts:
+                end_ts = min(snapshot_last_seen_ts, now_ts)
+            else:
+                end_ts = min(now_ts, start_ts + 3.0)
+            duration_sec = max(0.0, end_ts - start_ts)
         elif kind == 'finished':
             duration_sec = 1.2
+            end_ts = start_ts + duration_sec
+        else:
+            duration_sec = 1.0
+            end_ts = start_ts + duration_sec
 
-        if set_node_live(action_id, start_ts, duration_sec):
+        if set_node_live_window(action_id, start_ts, end_ts, min_duration_sec=1.0):
             live_action_nodes.append((action_id, start_ts))
 
     for action_id, row, abs_idx, _decision_id in action_nodes:
@@ -1223,15 +1243,16 @@ def build_causal_graph(snapshot, decisions, cron_timeline, context_roots):
         raw_duration_ms = row.get('duration_ms')
         if isinstance(raw_duration_ms, (int, float)) and raw_duration_ms > 0:
             duration_sec = float(raw_duration_ms) / 1000.0
+            end_ts = start_ts + duration_sec
         else:
             duration_sec = 1.2
-        set_node_live(outcome_id, start_ts, duration_sec)
+            end_ts = start_ts + duration_sec
+        set_node_live_window(outcome_id, start_ts, end_ts, min_duration_sec=0.9)
 
     trigger_id = None
     if live_action_nodes:
         latest_action_id, _ = max(live_action_nodes, key=lambda item: item[1])
-        linked_decision = next((decision_id for action_id, _row, _abs_idx, decision_id in action_nodes if action_id == latest_action_id), None)
-        trigger_id = linked_decision or latest_action_id
+        trigger_id = latest_action_id
     elif live_decision_nodes:
         trigger_id, _ = max(live_decision_nodes, key=lambda item: item[1])
 
