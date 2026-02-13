@@ -173,7 +173,7 @@
 
         .layout {
             display: grid;
-            grid-template-columns: minmax(720px, 2fr) minmax(480px, 1.2fr);
+            grid-template-columns: minmax(0, 1.7fr) minmax(360px, 1fr);
             gap: 14px;
             padding: 14px;
             align-items: start;
@@ -247,6 +247,29 @@
             align-self: flex-end;
         }
         .agent-card:hover { transform: translateY(-1px); border-color: #4b6192; }
+        .agent-card:focus-visible {
+            outline: 2px solid #5b8cff;
+            outline-offset: 2px;
+            border-color: #5b8cff;
+        }
+        .agent-click-hint {
+            margin-top: 8px;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            border: 1px dashed rgba(143, 179, 255, .44);
+            border-radius: 999px;
+            padding: 2px 7px;
+            font-size: .67rem;
+            color: #b9ccf5;
+            background: rgba(18, 31, 59, .44);
+            letter-spacing: .18px;
+        }
+        .agent-card:hover .agent-click-hint {
+            color: #e7efff;
+            border-color: rgba(143, 179, 255, .72);
+            background: rgba(22, 38, 72, .62);
+        }
         .agent-card.selected {
             border-color: #8fb3ff;
             background: linear-gradient(180deg, rgba(34, 55, 102, .55), rgba(23, 36, 67, .72));
@@ -526,6 +549,18 @@
         .when { color: var(--muted); font-size: .74rem; }
 
         .investigation { position: sticky; top: 96px; }
+
+        .mobile-resolution-warning {
+            display: none;
+            margin: 10px 14px 0;
+            border: 1px solid rgba(245, 158, 11, .5);
+            background: rgba(245, 158, 11, .12);
+            color: #f8d28a;
+            border-radius: 8px;
+            padding: 8px 10px;
+            font-size: .78rem;
+            line-height: 1.35;
+        }
         .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
         .tab {
             border: 1px solid var(--border);
@@ -1175,11 +1210,18 @@
             }
         }
 
-        @media (max-width: 1380px) {
+        @media (max-width: 767px) {
             .layout { grid-template-columns: 1fr; }
             .investigation { position: static; }
             .trace { max-height: 52vh; }
             .overview-grid { grid-template-columns: 1fr; }
+            .mobile-resolution-warning { display: block; }
+        }
+
+        @media (min-width: 768px) {
+            .layout {
+                grid-template-columns: minmax(0, 1.7fr) minmax(340px, 0.95fr);
+            }
         }
 
         .site-footer {
@@ -1243,11 +1285,15 @@
         </div>
     </header>
 
+    <div class="mobile-resolution-warning" role="status" aria-live="polite">
+        Recommended minimum width: 768px for full observability layout.
+    </div>
+
     <main class="layout">
         <section>
             <article class="panel">
                 <div class="panel-head">
-                    <h2 class="title-with-help">Swarm Overview (click to enter deep drilldown)
+                    <h2 class="title-with-help">Swarm Overview
                         <button class="help-btn" data-doc="03-ui-ux-guide.md" data-doc-anchor="03-ui-ux-guide.md-swarm-overview-section" title="Open section guide">?</button>
                     </h2>
                     <button id="telemetry-warning-btn" class="telemetry-warning-btn hidden" title="Open telemetry warning details" aria-label="Open telemetry warning details">⚠️</button>
@@ -2622,6 +2668,14 @@
             }
         }
 
+        function isBenignDrilldownAbort(error, controller) {
+            if (controller?.signal?.aborted) return true;
+            const name = String(error?.name || '');
+            if (name === 'AbortError') return true;
+            const message = String(error?.message || '').toLowerCase();
+            return message.includes('aborted');
+        }
+
         async function openDrilldown(agentName, options = {}) {
             const background = Boolean(options.background);
             store.selectedAgent = agentName;
@@ -2664,7 +2718,7 @@
                 store.drilldownLoadingAgent = null;
                 scheduleRender({ drilldown: true, refresh: true });
             } catch (error) {
-                if (error && error.name === 'AbortError') return;
+                if (isBenignDrilldownAbort(error, controller)) return;
                 console.error('drilldown error', error);
                 if (!hasFreshCache && selectedBefore !== agentName) {
                     store.drilldown = null;
@@ -2704,6 +2758,7 @@
                     <div class="kv"><span class="muted">Cron:</span> ${esc(item.cron_jobs ?? 0)} ${interrupted ? `<span class="chip bad">${interrupted} non-ok</span>` : ''}</div>
                     <div class="kv"><span class="muted">Missions:</span> ${esc(missions)}</div>
                     <div class="kv"><span class="muted">Last event:</span> ${esc(item.last_seen || '—')}</div>
+                    <div class="agent-click-hint">Open investigation <span aria-hidden="true">→</span></div>
                 </div>
                 <div class="agent-side">
                     ${loading ? '<span class="chip warn">loading…</span>' : ''}
@@ -2731,6 +2786,8 @@
 
             connectedCallback() {
                 if (!this._bound) {
+                    this.setAttribute('role', 'button');
+                    this.setAttribute('tabindex', '0');
                     this.addEventListener('click', (event) => {
                         const docBtn = event.target.closest('[data-doc]');
                         if (docBtn) {
@@ -2738,6 +2795,12 @@
                             openDocsModal(docBtn.dataset.doc || 'INDEX.md', docBtn.dataset.docAnchor || null);
                             return;
                         }
+                        const agent = this._item?.agent || this.getAttribute('data-agent-name') || '';
+                        if (agent) openDrilldown(agent);
+                    });
+                    this.addEventListener('keydown', (event) => {
+                        if (event.key !== 'Enter' && event.key !== ' ') return;
+                        event.preventDefault();
                         const agent = this._item?.agent || this.getAttribute('data-agent-name') || '';
                         if (agent) openDrilldown(agent);
                     });
