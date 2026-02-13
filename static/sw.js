@@ -1,4 +1,4 @@
-const CACHE_NAME = 'openclaw-observatory-v1';
+const CACHE_NAME = 'openclaw-observatory-v2';
 const OFFLINE_URL = '/static/offline.html';
 const CORE_ASSETS = [
   '/',
@@ -29,6 +29,29 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
+
+  const isApiRequest =
+    url.pathname.startsWith('/docs/') ||
+    url.pathname.startsWith('/insights') ||
+    url.pathname.startsWith('/ready') ||
+    url.pathname.startsWith('/capabilities') ||
+    url.pathname.startsWith('/drilldown/');
+
+  if (isApiRequest) {
+    event.respondWith(
+      fetch(event.request).catch(() => {
+        const contentType = event.request.headers.get('accept') || '';
+        if (contentType.includes('application/json')) {
+          return new Response(JSON.stringify({ ok: false, error: 'offline' }), {
+            status: 503,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        return new Response('Service unavailable', { status: 503, headers: { 'Content-Type': 'text/plain' } });
+      })
+    );
+    return;
+  }
 
   if (event.request.mode === 'navigate') {
     event.respondWith(

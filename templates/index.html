@@ -2100,11 +2100,22 @@
             }
         }
 
+        async function fetchJsonWithTimeout(url, timeoutMs = 8000) {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), timeoutMs);
+            try {
+                const response = await fetch(url, { signal: controller.signal });
+                if (!response.ok) return null;
+                return await response.json();
+            } finally {
+                clearTimeout(timer);
+            }
+        }
+
         async function loadDocsIndex() {
             try {
-                const response = await fetch('/docs/index');
-                if (!response.ok) return [];
-                const payload = await response.json();
+                const payload = await fetchJsonWithTimeout('/docs/index');
+                if (!payload) return [];
                 const docs = Array.isArray(payload.docs) ? payload.docs : [];
                 store.docsIndex = docs;
                 return docs;
@@ -2233,9 +2244,8 @@
             if (!target) return null;
             if (store.docsPayloadByName[target]) return store.docsPayloadByName[target];
             try {
-                const response = await fetch(`/docs/content/${encodeURIComponent(target)}`);
-                if (!response.ok) return null;
-                const payload = await response.json();
+                const payload = await fetchJsonWithTimeout(`/docs/content/${encodeURIComponent(target)}`);
+                if (!payload) return null;
                 if (payload && payload.found) {
                     store.docsPayloadByName[target] = payload;
                 }
@@ -2586,46 +2596,52 @@
             modal.classList.add('open');
             modal.setAttribute('aria-hidden', 'false');
 
-            if (!store.docsIndex.length) {
-                await loadDocsIndex();
-            }
-            await buildDocsCatalog();
-
-            const rows = store.docsCatalog;
-            if (!rows.length) {
-                title.textContent = 'Documentation';
-                content.textContent = 'No docs available.';
-                return;
-            }
-
-            const defaultDoc = rows[0].doc;
-            const docToOpen = targetDoc || store.docsCurrent || defaultDoc;
-            const payload = await fetchDocContent(docToOpen);
-            if (!payload || !payload.found) {
-                title.textContent = 'Documentation';
-                content.textContent = `Unable to load ${docToOpen}.`;
-                return;
-            }
-
-            store.docsCurrent = payload.doc || docToOpen;
-            store.docsCurrentAnchor = targetAnchor || null;
-
-            const currentCatalog = rows.find((item) => String(item.doc || '') === String(store.docsCurrent || ''));
-            title.textContent = currentCatalog?.title || 'Documentation';
-
-            content.innerHTML = markdownToHtml(payload.content || '');
-            enhanceDocHeadings(content, store.docsCurrent);
-            highlightCodeBlocks(content);
-
-            if (store.docsCurrentAnchor) {
-                const anchorNode = document.getElementById(store.docsCurrentAnchor);
-                if (anchorNode) {
-                    anchorNode.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            try {
+                if (!store.docsIndex.length) {
+                    await loadDocsIndex();
                 }
-            } else {
-                content.scrollTop = 0;
+                await buildDocsCatalog();
+
+                const rows = store.docsCatalog;
+                if (!rows.length) {
+                    title.textContent = 'Documentation';
+                    content.textContent = 'No docs available.';
+                    return;
+                }
+
+                const defaultDoc = rows[0].doc;
+                const docToOpen = targetDoc || store.docsCurrent || defaultDoc;
+                const payload = await fetchDocContent(docToOpen);
+                if (!payload || !payload.found) {
+                    title.textContent = 'Documentation';
+                    content.textContent = `Unable to load ${docToOpen}.`;
+                    return;
+                }
+
+                store.docsCurrent = payload.doc || docToOpen;
+                store.docsCurrentAnchor = targetAnchor || null;
+
+                const currentCatalog = rows.find((item) => String(item.doc || '') === String(store.docsCurrent || ''));
+                title.textContent = currentCatalog?.title || 'Documentation';
+
+                content.innerHTML = markdownToHtml(payload.content || '');
+                enhanceDocHeadings(content, store.docsCurrent);
+                highlightCodeBlocks(content);
+
+                if (store.docsCurrentAnchor) {
+                    const anchorNode = document.getElementById(store.docsCurrentAnchor);
+                    if (anchorNode) {
+                        anchorNode.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                } else {
+                    content.scrollTop = 0;
+                }
+                renderDocsMenu();
+            } catch (error) {
+                console.error('open docs modal error', error);
+                title.textContent = 'Documentation';
+                content.textContent = 'Unable to load documentation right now. Retry in a moment.';
             }
-            renderDocsMenu();
         }
 
         async function openDrilldown(agentName, options = {}) {
@@ -3518,7 +3534,7 @@
             if (footerYear) {
                 footerYear.textContent = String(new Date().getFullYear());
             }
-            await registerServiceWorker();
+            registerServiceWorker();
             document.querySelectorAll('.tab').forEach((node) => {
                 node.addEventListener('click', () => setTab(node.dataset.tab));
             });
