@@ -20,7 +20,8 @@ logs/
 
 # OS / editor
 .DS_Store
-.vscode/
+.vscode/*
+!.vscode/mcp.json
 .idea/
 
 # Local env files
