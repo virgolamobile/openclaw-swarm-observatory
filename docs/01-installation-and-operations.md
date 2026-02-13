@@ -76,3 +76,21 @@ curl -s http://127.0.0.1:5050/capabilities
 - Do not expose dashboard publicly without reverse proxy auth.
 - Do not commit runtime secrets (`credentials/`, tokens, private logs).
 - Review OpenClaw workspace access before multi-user deployment.
+
+## 9. MCP operations
+
+The project ships with a native MCP server (`mcp_server.py`) that maps dashboard APIs to MCP tools.
+
+Run MCP server:
+
+```bash
+python mcp_server.py
+```
+
+Main variables:
+
+- `OPENCLAW_DASHBOARD_BASE_URL` (target dashboard URL)
+- `OPENCLAW_MCP_TIMEOUT_SEC` (HTTP timeout)
+
+VS Code client configuration example is available in `.vscode/mcp.json`.
+For full details, see `docs/07-mcp-integration.md`.

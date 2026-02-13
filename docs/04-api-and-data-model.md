@@ -98,3 +98,17 @@ Edge fields:
 - Missing agent: `404 agent_not_found`
 - Missing graph node: `404 node_not_found`
 - Partial channels: successful response with partial payload
+
+## 7. MCP mapping
+
+The MCP server (`mcp_server.py`) exposes the following tool-to-endpoint bindings:
+
+- `dashboard_ready` -> `GET /ready`
+- `dashboard_capabilities` -> `GET /capabilities`
+- `dashboard_insights` -> `GET /insights`
+- `agent_drilldown` -> `GET /drilldown/<agent>`
+- `agent_node_details` -> `GET /drilldown/<agent>/node/<nodeId>`
+- `dashboard_docs_index` -> `GET /docs/index`
+- `dashboard_doc_content` -> `GET /docs/content/<docName>`
+
+All MCP responses use a stable envelope with `ok`, `base_url`, and either `data` or error fields.
