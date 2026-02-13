@@ -844,6 +844,22 @@
             agentTelemetryHistory: {},
         };
 
+        const renderState = {
+            queued: false,
+            dirty: {
+                agents: true,
+                interactions: true,
+                kpi: true,
+                drilldown: true,
+                overview: true,
+                refresh: true,
+            },
+            agentSignatures: new Map(),
+            interactionsSignature: '',
+            kpiSignature: '',
+            drilldownSignature: '',
+        };
+
         // Escape helper for safe HTML interpolation.
         function esc(value) {
             const s = String(value ?? '');
@@ -1029,7 +1045,7 @@
                 node.classList.toggle('active', node.dataset.tab === tab);
             });
             renderActiveTabHelp();
-            renderDrilldown();
+            scheduleRender({ drilldown: true, refresh: true });
         }
 
         function getActiveTabHelp(tab) {
@@ -1655,11 +1671,11 @@
                 const response = await fetch(`/drilldown/${encodeURIComponent(agentName)}`);
                 if (!response.ok) {
                     store.drilldown = null;
-                    renderDrilldown();
+                    scheduleRender({ drilldown: true, refresh: true });
                     return;
                 }
                 store.drilldown = await response.json();
-                renderDrilldown();
+                scheduleRender({ drilldown: true, refresh: true });
             } catch (error) {
                 console.error('drilldown error', error);
             }
@@ -1673,7 +1689,7 @@
             const key = safeDomKey(item.agent);
             const tokVal = parseTokenCount(item);
             return `
-                <article class="agent-card ${selectedClass}" onclick="openDrilldown('${esc(item.agent)}')">
+                <article class="agent-card ${selectedClass}" data-agent-key="${esc(key)}" onclick="openDrilldown('${esc(item.agent)}')">
                     <div class="agent-main">
                         <div class="agent-top">
                             ${agentBadge(item.agent)}
@@ -1699,10 +1715,66 @@
             `;
         }
 
+        function rowSignature(item) {
+            const interrupted = Array.isArray(item?.interrupted_tasks) ? item.interrupted_tasks.length : 0;
+            const tokVal = parseTokenCount(item);
+            const selected = String(store.selectedAgent || '') === String(item?.agent || '');
+            return [
+                item?.agent || '',
+                item?.status || '',
+                item?.task || '',
+                item?.cron_jobs ?? 0,
+                interrupted,
+                item?.last_seen || '',
+                formatTokenCompact(tokVal),
+                selected ? 1 : 0,
+            ].join('|');
+        }
+
+        function htmlToElement(html) {
+            const template = document.createElement('template');
+            template.innerHTML = String(html || '').trim();
+            return template.content.firstElementChild;
+        }
+
         function renderAgents() {
             const grid = document.getElementById('agent-grid');
             const rows = Array.from(store.agents.values()).sort((a, b) => String(a.agent).localeCompare(String(b.agent)));
-            grid.innerHTML = rows.length ? rows.map(renderAgentCard).join('') : '<div class="row">Waiting for agent data...</div>';
+
+            if (!rows.length) {
+                grid.innerHTML = '<div class="row">Waiting for agent data...</div>';
+                renderState.agentSignatures.clear();
+                renderTelemetryCheck(rows);
+                document.getElementById('kpi-agents').textContent = '0';
+                return;
+            }
+
+            const existing = new Map();
+            grid.querySelectorAll('.agent-card[data-agent-key]').forEach((node) => {
+                existing.set(String(node.getAttribute('data-agent-key') || ''), node);
+            });
+
+            const nextKeys = new Set();
+            const fragment = document.createDocumentFragment();
+            rows.forEach((item) => {
+                const key = safeDomKey(item.agent);
+                const signature = rowSignature(item);
+                const prevSignature = renderState.agentSignatures.get(key);
+                let node = existing.get(key);
+
+                if (!node || signature !== prevSignature) {
+                    node = htmlToElement(renderAgentCard(item));
+                    renderState.agentSignatures.set(key, signature);
+                }
+                if (node) fragment.appendChild(node);
+                nextKeys.add(key);
+            });
+
+            Array.from(renderState.agentSignatures.keys()).forEach((key) => {
+                if (!nextKeys.has(key)) renderState.agentSignatures.delete(key);
+            });
+            grid.replaceChildren(fragment);
+
             if (rows.length) renderAgentTelemetryCharts(rows);
             renderTelemetryCheck(rows);
             document.getElementById('kpi-agents').textContent = String(rows.length);
@@ -1717,6 +1789,16 @@
         function renderInteractions() {
             const ua = (store.insights?.interactions?.user_agent || []).slice(0, 100);
             const aa = (store.insights?.interactions?.agent_agent || []).slice(0, 100);
+
+            const signature = [
+                ua.length,
+                aa.length,
+                ua[0]?.id || ua[0]?.ts || ua[0]?.text || '',
+                aa[0]?.id || aa[0]?.ts || aa[0]?.text || '',
+            ].join('|');
+            if (signature === renderState.interactionsSignature) return;
+            renderState.interactionsSignature = signature;
+
             document.getElementById('kpi-ua').textContent = String(ua.length);
             document.getElementById('kpi-aa').textContent = String(aa.length);
 
@@ -1744,6 +1826,24 @@
             const breadcrumb = document.getElementById('investigation-breadcrumb');
             const payload = store.drilldown;
 
+            const depth = payload?.depth || {};
+            const signature = [
+                store.activeTab,
+                payload?.found ? 1 : 0,
+                payload?.agent || '',
+                (depth?.decision_trace || []).length,
+                (depth?.timeline || []).length,
+                (depth?.cron_timeline || []).length,
+                (depth?.context_roots || []).length,
+                (depth?.causal_graph?.nodes || []).length,
+                (depth?.causal_graph?.edges || []).length,
+                store.nodeDetails?.node?.id || '',
+                store.overviewBacklink?.agent || '',
+                store.overviewBacklink?.decisionIndex ?? '',
+            ].join('|');
+            if (signature === renderState.drilldownSignature) return;
+            renderState.drilldownSignature = signature;
+
             const tabLabels = {
                 decisions: 'Why decisions',
                 soul: 'SOUL/file derivation',
@@ -1763,7 +1863,6 @@
                 return;
             }
 
-            const depth = payload.depth || {};
             title.textContent = `Investigation ${payload.agent} · ${store.activeTab}`;
             selectedLabel.innerHTML = `Current agent: ${agentBadge(payload.agent, true)}`;
 
@@ -2111,16 +2210,53 @@
                     if (job && job.interrupted) interrupted += 1;
                 });
             });
+
+            const signature = `${interrupted}|${store.insights?.cron?.summary?.active_jobs ?? 0}`;
+            if (signature === renderState.kpiSignature) return;
+            renderState.kpiSignature = signature;
+
             document.getElementById('kpi-bad').textContent = String(interrupted);
             document.getElementById('kpi-cron').textContent = String(store.insights?.cron?.summary?.active_jobs ?? 0);
         }
 
         function render() {
-            renderAgents();
-            renderInteractions();
-            renderKpiCron();
-            renderDrilldown();
-            if (store.overviewCurrent) {
+            scheduleRender({
+                agents: true,
+                interactions: true,
+                kpi: true,
+                drilldown: true,
+                overview: true,
+                refresh: true,
+            });
+        }
+
+        function scheduleRender(partial = {}) {
+            renderState.dirty = {
+                ...renderState.dirty,
+                ...partial,
+            };
+            if (renderState.queued) return;
+            renderState.queued = true;
+            requestAnimationFrame(flushRender);
+        }
+
+        function flushRender() {
+            renderState.queued = false;
+            const dirty = renderState.dirty;
+            renderState.dirty = {
+                agents: false,
+                interactions: false,
+                kpi: false,
+                drilldown: false,
+                overview: false,
+                refresh: false,
+            };
+
+            if (dirty.agents) renderAgents();
+            if (dirty.interactions) renderInteractions();
+            if (dirty.kpi) renderKpiCron();
+            if (dirty.drilldown) renderDrilldown();
+            if (dirty.overview && store.overviewCurrent) {
                 const modal = document.getElementById('overview-modal');
                 if (modal && modal.classList.contains('open')) {
                     const detail = renderOverviewDetail(store.overviewCurrent);
@@ -2128,7 +2264,9 @@
                     document.getElementById('overview-content').innerHTML = detail.html;
                 }
             }
-            document.getElementById('last-refresh').textContent = `refresh: ${new Date().toLocaleTimeString()}`;
+            if (dirty.refresh) {
+                document.getElementById('last-refresh').textContent = `refresh: ${new Date().toLocaleTimeString()}`;
+            }
         }
 
         async function refreshInsights() {
@@ -2149,7 +2287,14 @@
                 if (store.selectedAgent && !shouldDeferDrilldownRefresh()) {
                     await openDrilldown(store.selectedAgent);
                 }
-                render();
+                scheduleRender({
+                    agents: true,
+                    interactions: true,
+                    kpi: true,
+                    drilldown: !store.selectedAgent,
+                    overview: true,
+                    refresh: true,
+                });
             } catch (error) {
                 console.error('insights error', error);
             }
@@ -2177,7 +2322,7 @@
                 data.forEach((row) => {
                     if (row && row.agent) store.agents.set(row.agent, row);
                 });
-                render();
+                scheduleRender({ agents: true, refresh: true });
             });
 
             socket.on('update', (data) => {
@@ -2186,7 +2331,7 @@
                 if (store.selectedAgent && String(store.selectedAgent) === String(data.agent) && !shouldDeferDrilldownRefresh()) {
                     openDrilldown(store.selectedAgent);
                 }
-                render();
+                scheduleRender({ agents: true, refresh: true });
             });
 
             socket.on('init_pending', () => {
