@@ -207,13 +207,13 @@ def test_infer_decision_trace_extracts_reason_links():
             "ts": "2026-02-12T12:01:00Z",
             "source": "realtime",
             "type": "recent_assistant",
-            "text": "assistant: Il gateway è attivo e funzionante.",
+            "text": "assistant: The gateway is active and healthy.",
         },
         {
             "ts": "2026-02-12T12:00:20Z",
             "source": "interaction",
             "type": "user_interaction",
-            "text": "user: Controlla lo stato del gateway",
+            "text": "user: Check the gateway status",
         },
     ]
 
@@ -232,20 +232,20 @@ def test_drilldown_endpoint_returns_depth_layers_for_agent():
         dashboard_app.agent_state["Europa"] = {
             "agent": "Europa",
             "status": "Active",
-            "task": "Verifica gateway",
+            "task": "Verify gateway",
             "last_seen": "2026-02-12T12:00:00Z",
             "cron_jobs": 2,
             "recent_messages": ["assistant: Gateway ok"],
-            "recent_thoughts": ["controllo stato"],
+            "recent_thoughts": ["status check"],
             "message_history": [{"type": "message", "ts": "2026-02-12T11:59:00Z", "text": "user: check"}],
-            "thought_history": [{"type": "thought", "ts": "2026-02-12T11:59:10Z", "text": "analisi"}],
+            "thought_history": [{"type": "thought", "ts": "2026-02-12T11:59:10Z", "text": "analysis"}],
             "cron_details": [
                 {
                     "name": "Gateway watchdog",
                     "last_status": "ok",
                     "last_run_at": "2026-02-12 12:00:00",
                     "next_run_at": "2026-02-12 12:15:00",
-                    "summary": "controllo salute",
+                    "summary": "health check",
                     "recent_runs": [],
                 }
             ],
@@ -270,7 +270,7 @@ def test_build_cron_timeline_orders_events_and_includes_next_runs():
         {
             "name": "Heartbeat Europa",
             "next_run_ms": now_ms + 60000,
-            "next_action": "Controlla stato gateway",
+            "next_action": "Check gateway status",
             "recent_runs": [
                 {
                     "ts": now_ms - 10000,
@@ -290,15 +290,15 @@ def test_build_cron_timeline_orders_events_and_includes_next_runs():
 
 def test_extract_document_anchors_collects_structured_lines():
     text = """
-# Missione
-- Devi monitorare il gateway
-1. Priorità sicurezza
-Nota: questo testo deve restare coerente
+# Mission
+- You must monitor the gateway
+1. Security priority
+Note: this text must stay coherent
 """
     anchors = dashboard_app.extract_document_anchors(text, max_items=10)
     assert anchors
-    assert any("Missione" in x for x in anchors)
-    assert any("monitorare il gateway" in x for x in anchors)
+    assert any("Mission" in x for x in anchors)
+    assert any("monitor the gateway" in x for x in anchors)
 
 
 def test_build_causal_graph_returns_nodes_and_edges():
@@ -308,9 +308,9 @@ def test_build_causal_graph_returns_nodes_and_edges():
     }
     decisions = [
         {
-            "decision": "Controllare lo stato gateway",
+            "decision": "Check gateway status",
             "source": "realtime",
-            "root_causes": [{"file": "/tmp/SOUL.md", "anchors": ["Priorità sicurezza"]}],
+            "root_causes": [{"file": "/tmp/SOUL.md", "anchors": ["Security priority"]}],
         }
     ]
     cron_timeline = [
@@ -325,7 +325,7 @@ def test_build_causal_graph_returns_nodes_and_edges():
     context_roots = [
         {
             "file": "/tmp/SOUL.md",
-            "matched_anchors": ["Priorità sicurezza"],
+            "matched_anchors": ["Security priority"],
         }
     ]
 
@@ -508,6 +508,10 @@ def test_build_cron_details_updates_global_summary(monkeypatch):
 def test_push_interaction_detects_user_and_agent_mentions():
     dashboard_app.recent_user_agent.clear()
     dashboard_app.recent_agent_agent.clear()
+    with dashboard_app.state_lock:
+        dashboard_app.agent_state.clear()
+        dashboard_app.agent_state["Europa"] = {"agent": "Europa"}
+        dashboard_app.agent_state["Mercurio"] = {"agent": "Mercurio"}
 
     dashboard_app.push_interaction(
         {

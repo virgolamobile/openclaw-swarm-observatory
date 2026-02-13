@@ -1,82 +1,85 @@
 # OpenClaw Portable Compliance Matrix
 
-## Scopo
+Author: Niccolò Zamborlini (encom.io)  
+Project: https://github.com/virgolamobile/openclaw-swarm-observatory/tree/main
 
-Definire cosa è protocollo OpenClaw, cosa è opzionale a runtime, e come degradare senza rompere il dashboard.
+## Purpose
 
-## Distinzione fondamentale
+Define what is OpenClaw protocol-level behavior, what is optional at runtime, and how the dashboard must degrade gracefully without failing startup.
 
-- **Protocol requirement**: canale previsto dalle regole dello sciame.
-- **Runtime prerequisite**: dipendenza tecnica necessaria per avvio del tool.
+## Core distinction
 
-Il dashboard deve rispettare i protocolli ma non deve fallire se uno o più canali non sono presenti nell'installazione.
+- **Protocol requirement**: a channel expected by OpenClaw governance.
+- **Runtime prerequisite**: a technical dependency required to run the dashboard.
 
-## Matrice canali
+The dashboard must remain protocol-aware while never hard-failing when one or more channels are missing in the target installation.
 
-| Canale | Protocollo OpenClaw | Runtime prerequisito | Fallback portable | Output minimo garantito |
+## Channel matrix
+
+| Channel | OpenClaw protocol status | Runtime prerequisite | Portable fallback | Minimum guaranteed output |
 |---|---|---|---|---|
-| `shared/events/bus.jsonl` | Prescritto (broadcast) | NO | CLI/Gateway provider, oppure disable-safe | timeline eventi base |
-| `shared/requests/` | Prescritto (asincrono) | NO | interaction da bus/direct messages | relazioni parziali |
-| `shared/results/` | Prescritto (risultati) | NO | derive completion da milestone/eventi | completamenti stimati |
-| `shared/action-ledger/*` | Prescritto (progress protocol) | NO | inferenza KPI da eventi/cron-run | KPI a confidenza media |
-| `cron/jobs.json` | Prescritto da architettura | NO | `openclaw cron list --json` | next runs + health cron |
-| `cron/runs/*.jsonl` | Prescritto da architettura | NO | cron state last run / summary | trend durata e status limitati |
-| `agents/*/sessions/*.jsonl` | Comune ma implementation-dependent | NO | bus + cron + direct agent state | doing-now inferito |
-| lock files sessione | Implementation detail | NO | watchdog/blocker events | lock insights parziali |
+| `shared/events/bus.jsonl` | Required (broadcast) | NO | CLI/Gateway provider, or disable-safe mode | base event timeline |
+| `shared/requests/` | Required (async p2p) | NO | infer interactions from bus/direct messages | partial relations |
+| `shared/results/` | Required (outcomes) | NO | infer completion from milestones/events | estimated completions |
+| `shared/action-ledger/*` | Required (progress protocol) | NO | infer KPIs from events/cron runs | medium-confidence KPIs |
+| `cron/jobs.json` | Architecturally required | NO | `openclaw cron list --json` | next runs + cron health |
+| `cron/runs/*.jsonl` | Architecturally required | NO | cron last-run summary/state | limited duration/status trends |
+| `agents/*/sessions/*.jsonl` | Common but implementation-dependent | NO | bus + cron + agent state | inferred doing-now |
+| session lock files | Implementation detail | NO | watchdog/blocker events | partial lock insights |
 
-## Profilo raccomandato: Core-Only Passive
+## Recommended profile: core-only-passive
 
-Questo profilo è pensato per funzionare su installazioni OpenClaw eterogenee senza dipendere da file custom locali.
+This profile is designed to run across heterogeneous OpenClaw installations without requiring local custom files.
 
-### Comandi base (read-only)
+### Baseline read-only commands
 
-| Comando | Uso |
+| Command | Usage |
 |---|---|
-| `openclaw agents list --json` | discovery agenti e workspace |
-| `openclaw cron list --json` | scheduling + stato job |
-| `openclaw status --json` | snapshot runtime aggregata |
-| `openclaw system presence --json` | presenza gateway/nodi |
-| `openclaw health` | salute infrastruttura |
+| `openclaw agents list --json` | agent/workspace discovery |
+| `openclaw cron list --json` | scheduling + job status |
+| `openclaw status --json` | aggregated runtime snapshot |
+| `openclaw system presence --json` | gateway/node presence |
+| `openclaw health` | infrastructure health |
 
-### Garanzia
+### Guarantee
 
-Se questi comandi sono disponibili, il dashboard deve:
+If these commands are available, the dashboard must:
 
-- avviarsi sempre
-- mostrare stato agenti/cron/sistema
-- non richiedere modifiche ai prompt o ai file "anima" degli agenti
+- always start
+- display agents/cron/system status
+- avoid requiring changes in agent prompts or identity files
 
 ## Bootstrap contract
 
-All'avvio il sistema deve produrre:
+At startup the system should emit:
 
-1. `capabilities.json` con stato di ogni canale
-2. `coverage score` globale (0-100)
-3. `mode` selezionata (`strict-openclaw`, `portable-openclaw`, `minimal`)
-4. `remediation hints` per canali mancanti
+1. `capabilities.json` with per-channel availability
+2. global `coverage score` (0-100)
+3. selected `mode` (`strict-openclaw`, `portable-openclaw`, `minimal`)
+4. `remediation hints` for missing channels
 
-## Regole di degrado
+## Degradation rules
 
-1. Nessun canale disponibile → dashboard avvia in `minimal`, mostra diagnostica setup.
-2. Canali parziali → dashboard avvia in `portable`, marcando confidence per pannello.
-3. Canali completi → dashboard avvia in `strict`, feature complete.
+1. No channels available → start in `minimal` mode with setup diagnostics.
+2. Partial channels available → start in `portable` mode and expose per-panel confidence.
+3. Full channels available → start in `strict` mode with complete features.
 
-## Requisiti per pubblicazione
+## Public release requirements
 
-- Zero path hard-coded alla home utente specifica
-- Supporto root custom via env/config
-- Tutti i connector con `discover/snapshot/stream/health`
-- Nessun crash per file/cartelle mancanti
-- Test su almeno 3 profili:
+- No user-specific absolute hardcoded paths
+- Custom root support via env/config
+- All connectors implement `discover/snapshot/stream/health`
+- No crash for missing files/directories
+- Test matrix on at least three profiles:
   - full OpenClaw
-  - partial (bus+cron senza requests/results)
-  - minimal (solo CLI)
+  - partial (bus + cron, no requests/results)
+  - minimal (CLI only)
 
-## Criterio di accettazione
+## Acceptance criterion
 
-Il tool è "out-of-the-box" quando, su installazione sconosciuta, mostra entro 30s:
+The tool is considered out-of-the-box when, on an unknown installation, it shows within 30 seconds:
 
-- stato bootstrap
-- capabilities rilevate
-- almeno un pannello realtime popolato
-- guida concreta per aumentare coverage
+- bootstrap state
+- detected capabilities
+- at least one populated real-time panel
+- actionable guidance to increase coverage

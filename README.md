@@ -2,6 +2,12 @@
 
 A real-time observability dashboard for OpenClaw multi-agent systems.
 
+## Author
+
+- **Name:** Niccolò Zamborlini
+- **Company:** encom.io
+- **Project URL:** https://github.com/virgolamobile/openclaw-swarm-observatory/tree/main
+
 This project provides:
 - Live swarm monitoring (agent state, interactions, cron activity)
 - Progressive drilldown from overview to root-cause evidence
@@ -153,7 +159,6 @@ See `docs/` for deep technical documentation:
 
 The dashboard also exposes docs directly in-app:
 - Header button: **Docs index**
-- Contextual `?` help icons on key panels
 - Modal navigation with deep links to each markdown file
 
 ## Community standards

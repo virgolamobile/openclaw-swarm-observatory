@@ -3,6 +3,9 @@
 This module implements a real-time observability backend for OpenClaw agents.
 It combines passive core telemetry polling, event-bus tailing, session bridging,
 and layered drilldown APIs (including causal graphs and node-level deep detail).
+
+Author: Niccolò Zamborlini (encom.io)
+Project: https://github.com/virgolamobile/openclaw-swarm-observatory/tree/main
 """
 
 from flask import Flask, render_template, request
@@ -540,7 +543,7 @@ def extract_document_anchors(text, max_items=32):
             anchors.append(line[2:].strip())
         elif re.match(r'^\d+[\.)]\s+', line):
             anchors.append(re.sub(r'^\d+[\.)]\s+', '', line).strip())
-        elif any(keyword in line.lower() for keyword in ['must', 'deve', 'sempre', 'mai', 'obiettivo', 'mission', 'priorità']):
+        elif any(keyword in line.lower() for keyword in ['must', 'always', 'never', 'objective', 'mission', 'priority']):
             anchors.append(line)
         if len(anchors) >= max_items:
             break
