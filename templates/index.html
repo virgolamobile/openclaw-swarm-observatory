@@ -1215,6 +1215,32 @@
             color: #d4e2ff;
             letter-spacing: .15px;
         }
+        .site-footer-link {
+            color: #c9d9ff;
+            text-decoration: none;
+            border-bottom: 1px dotted rgba(201, 217, 255, .45);
+        }
+        .site-footer-link:hover {
+            color: #ffffff;
+            border-bottom-color: rgba(255, 255, 255, .78);
+        }
+        .site-footer-app {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            color: #b9caf0;
+            letter-spacing: .35px;
+            text-transform: uppercase;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            font-size: .72rem;
+        }
+        .footer-mark {
+            width: 14px;
+            height: 14px;
+            color: #d4e2ff;
+            opacity: .92;
+            flex: 0 0 auto;
+        }
     </style>
 </head>
 <body>
@@ -1296,8 +1322,8 @@
 
     <footer class="site-footer" role="contentinfo" aria-label="Copyright and credits">
         <div class="site-footer-inner">
-            <div class="site-footer-copyright">© <span id="footer-year"></span> Niccolò Zamborlini · encom.io · OpenClaw Swarm Observatory</div>
-            <div class="meta">Official branding and product identity.</div>
+            <div class="site-footer-copyright">© <span id="footer-year"></span> Niccolò Zamborlini · encom.io · <a class="site-footer-link" href="https://github.com/virgolamobile" target="_blank" rel="noopener noreferrer">github.com/virgolamobile</a></div>
+            <div class="site-footer-app"><svg class="footer-mark" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><circle cx="32" cy="32" r="28" stroke="currentColor" stroke-width="2"></circle><circle cx="32" cy="32" r="22" stroke="currentColor" stroke-width="1" opacity="0.35"></circle><circle cx="32" cy="29" r="4" fill="currentColor"></circle><circle cx="26" cy="35" r="3.2" fill="currentColor" opacity="0.82"></circle><circle cx="38" cy="34" r="2.6" fill="currentColor" opacity="0.68"></circle></svg>OpenClaw Swarm Observatory</div>
         </div>
     </footer>
 
