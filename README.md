@@ -34,6 +34,18 @@ You can move from:
 - `reader.py` — optional standalone bus reader utility
 - `tests/test_app_logic.py` — backend unit tests
 
+## Frontend dependencies (vendored)
+
+The dashboard serves frontend libraries from local files under `static/vendor/`.
+
+Vendored libraries:
+- Socket.IO client
+- marked
+- DOMPurify
+- highlight.js (JS + CSS theme)
+
+This removes runtime dependency on public CDNs for normal operation.
+
 ## Quick start
 
 ### 1) Create a virtual environment
@@ -155,5 +167,8 @@ This repository is licensed under **PolyForm Noncommercial 1.0.0**.
 
 - Commercial use is not permitted without separate permission.
 - See `LICENSE` for full legal terms.
+
+Third-party vendored assets are covered by their own upstream licenses.
+See `THIRD_PARTY_NOTICES.md` and `static/vendor/licenses/` for details.
 
 For commercial licensing, contact the project owner directly.

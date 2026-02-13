@@ -6,6 +6,8 @@
 - OpenClaw runtime installed and available in `PATH`
 - Access to OpenClaw data directories under `~/.openclaw`
 
+Note: frontend assets are served locally from `static/vendor/` (no external CDN required at runtime).
+
 ## 2. Local setup
 
 ```bash
