@@ -1,0 +1,18 @@
+{
+  "name": "OpenClaw Swarm Observatory",
+  "short_name": "OpenClaw Obs",
+  "description": "Real-time observability dashboard for OpenClaw multi-agent systems.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0b1020",
+  "theme_color": "#0b1020",
+  "icons": [
+    {
+      "src": "/static/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

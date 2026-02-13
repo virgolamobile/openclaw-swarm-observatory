@@ -4,9 +4,20 @@
     <!-- Author: Niccolò Zamborlini (encom.io) -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Real-time observability dashboard for OpenClaw multi-agent systems, with drilldowns, causal graph and operational telemetry.">
+    <meta name="keywords" content="OpenClaw, observability, swarm, agents, telemetry, dashboard, causal graph">
+    <meta name="theme-color" content="#0b1020">
+    <meta name="application-name" content="OpenClaw Swarm Observatory">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="OpenClaw Observatory">
     <meta name="author" content="Niccolò Zamborlini">
     <meta name="organization" content="encom.io">
     <meta name="project-url" content="https://github.com/virgolamobile/openclaw-swarm-observatory/tree/main">
+    <link rel="manifest" href="/static/manifest.webmanifest">
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+    <link rel="apple-touch-icon" href="/static/favicon.svg">
     <title>OpenClaw Swarm Observatory</title>
     <script src="/static/vendor/socket.io/socket.io.min.js"></script>
     <link rel="stylesheet" href="/static/vendor/highlightjs/github-dark.min.css">
@@ -26,6 +37,19 @@
             --border: #2a3758;
         }
         * { box-sizing: border-box; }
+        html, body {
+            -webkit-user-select: none;
+            user-select: none;
+            -webkit-touch-callout: none;
+        }
+        img, svg {
+            -webkit-user-drag: none;
+            user-drag: none;
+        }
+        input, textarea, [contenteditable="true"], .docs-content pre, .docs-content code {
+            -webkit-user-select: text;
+            user-select: text;
+        }
         body {
             margin: 0;
             font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -2607,6 +2631,15 @@
                 }
             }
         }
+
+        async function registerServiceWorker() {
+            if (!('serviceWorker' in navigator)) return;
+            try {
+                await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+            } catch (error) {
+                console.warn('service worker registration failed', error);
+            }
+        }
         window.openDrilldown = openDrilldown;
 
         function renderAgentCardBody(item, loading = false) {
@@ -3426,6 +3459,10 @@
         }
 
         (async function bootstrap() {
+            document.addEventListener('dragstart', (event) => {
+                event.preventDefault();
+            });
+            await registerServiceWorker();
             document.querySelectorAll('.tab').forEach((node) => {
                 node.addEventListener('click', () => setTab(node.dataset.tab));
             });

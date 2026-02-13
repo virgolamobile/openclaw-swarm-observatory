@@ -8,7 +8,7 @@ Author: Niccolò Zamborlini (encom.io)
 Project: https://github.com/virgolamobile/openclaw-swarm-observatory/tree/main
 """
 
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, send_from_directory
 from flask_socketio import SocketIO
 import threading
 import time
@@ -72,6 +72,16 @@ CORE_CAPABILITIES = {
 def index():
     """Serve the main dashboard HTML page."""
     return render_template('index.html')
+
+
+@app.route('/sw.js')
+def service_worker():
+    """Serve service worker from root to enable app-wide offline scope."""
+    response = send_from_directory('static', 'sw.js')
+    response.headers['Cache-Control'] = 'no-cache'
+    response.headers['Service-Worker-Allowed'] = '/'
+    response.headers['Content-Type'] = 'application/javascript; charset=utf-8'
+    return response
 
 @app.route('/ready')
 def ready():
