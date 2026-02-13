@@ -719,17 +719,26 @@
         .overview-lines li { margin-bottom: 5px; }
 
         .content-updated {
-            animation: contentFadeIn .22s ease-out;
+            animation: contentFadeIn .24s ease-out;
+            will-change: opacity, transform, filter;
         }
 
         @keyframes contentFadeIn {
             from {
-                opacity: .42;
-                transform: translateY(2px);
+                opacity: .96;
+                transform: translateY(1px);
+                filter: brightness(1.03);
             }
             to {
                 opacity: 1;
                 transform: translateY(0);
+                filter: brightness(1);
+            }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .content-updated {
+                animation: none;
             }
         }
 
@@ -888,9 +897,17 @@
 
         function markContentUpdate(node) {
             if (!node) return;
-            node.classList.remove('content-updated');
-            void node.offsetWidth;
+            const now = Date.now();
+            const lastTs = Number(node.dataset.contentUpdatedTs || 0);
+            if ((now - lastTs) < 160) return;
+            node.dataset.contentUpdatedTs = String(now);
             node.classList.add('content-updated');
+            if (node._contentUpdatedTimer) {
+                clearTimeout(node._contentUpdatedTimer);
+            }
+            node._contentUpdatedTimer = setTimeout(() => {
+                node.classList.remove('content-updated');
+            }, 280);
         }
 
         function agentColor(name) {
