@@ -1139,6 +1139,9 @@ def build_causal_graph(snapshot, decisions, cron_timeline, context_roots):
             'weight': clamp_weight((action_weight + outcome_weight) / 2),
         })
 
+    now_ts = time.time()
+    live_window_sec = 110
+
     latest_action = None
     latest_action_score = -1.0
     for action_id, row, abs_idx, decision_id in action_nodes:
@@ -1148,17 +1151,50 @@ def build_causal_graph(snapshot, decisions, cron_timeline, context_roots):
             latest_action_score = score
             latest_action = (action_id, decision_id)
 
-    if latest_action:
+    latest_decision = None
+    latest_decision_score = -1.0
+    for decision_id in decision_nodes:
+        decision_node = node_by_id.get(decision_id)
+        ts_score = parse_any_ts((decision_node or {}).get('meta', {}).get('ts'))
+        score = ts_score if ts_score > 0 else -1.0
+        if score > latest_decision_score:
+            latest_decision_score = score
+            latest_decision = decision_id
+
+    trigger_mode = None
+    if latest_action_score > 0 and (now_ts - latest_action_score) <= live_window_sec:
+        trigger_mode = 'action'
+    if latest_decision_score > 0 and (now_ts - latest_decision_score) <= live_window_sec:
+        if trigger_mode != 'action' or latest_decision_score >= latest_action_score:
+            trigger_mode = 'decision'
+
+    if trigger_mode == 'action' and latest_action:
         action_id, decision_id = latest_action
         action_node = node_by_id.get(action_id)
         if action_node:
             action_node.setdefault('meta', {})['live'] = True
             action_node.setdefault('meta', {})['trigger_source'] = True
+            action_node.setdefault('meta', {})['live_expires_at'] = now_ts + live_window_sec
         if decision_id:
             decision_node = node_by_id.get(decision_id)
             if decision_node:
                 decision_node.setdefault('meta', {})['live'] = True
                 decision_node.setdefault('meta', {})['trigger_source'] = True
+                decision_node.setdefault('meta', {})['live_expires_at'] = now_ts + live_window_sec
+
+    if trigger_mode == 'decision' and latest_decision:
+        decision_node = node_by_id.get(latest_decision)
+        if decision_node:
+            decision_node.setdefault('meta', {})['live'] = True
+            decision_node.setdefault('meta', {})['trigger_source'] = True
+            decision_node.setdefault('meta', {})['live_expires_at'] = now_ts + live_window_sec
+            decision_idx = decision_node.get('meta', {}).get('decision_index')
+            if isinstance(decision_idx, int):
+                for n in nodes:
+                    nid = str(n.get('id', ''))
+                    if nid.startswith(f'reason:{decision_idx}:') or nid == f'signal:{decision_idx}':
+                        n.setdefault('meta', {})['live'] = True
+                        n.setdefault('meta', {})['live_expires_at'] = now_ts + live_window_sec
 
     def mark_latest(group_name, limit=1):
         candidates = [n for n in nodes if n.get('group') == group_name]
@@ -1171,7 +1207,10 @@ def build_causal_graph(snapshot, decisions, cron_timeline, context_roots):
         scored.sort(key=lambda item: (item[0], item[1]), reverse=True)
         picked = [item[2] for item in scored[:limit]]
         for node in picked:
-            node.setdefault('meta', {})['live'] = True
+            ts_score = parse_any_ts(node.get('meta', {}).get('ts'))
+            if ts_score > 0 and (now_ts - ts_score) <= live_window_sec:
+                node.setdefault('meta', {})['live'] = True
+                node.setdefault('meta', {})['live_expires_at'] = ts_score + live_window_sec
         return picked
 
     live_nodes = []
@@ -1195,6 +1234,22 @@ def build_causal_graph(snapshot, decisions, cron_timeline, context_roots):
         target = str(edge.get('target', ''))
         if source in live_ids or target in live_ids:
             edge.setdefault('meta', {})['live'] = True
+
+    for node in nodes:
+        meta = node.get('meta', {}) if isinstance(node.get('meta', {}), dict) else {}
+        expires_at = meta.get('live_expires_at')
+        if meta.get('live') and isinstance(expires_at, (int, float)) and expires_at < now_ts:
+            meta['live'] = False
+            meta['trigger_source'] = False
+            node['meta'] = meta
+
+    for edge in edges:
+        if not edge.get('meta', {}).get('live'):
+            continue
+        source_meta = node_by_id.get(str(edge.get('source', '')), {}).get('meta', {})
+        target_meta = node_by_id.get(str(edge.get('target', '')), {}).get('meta', {})
+        if not source_meta.get('live') and not target_meta.get('live'):
+            edge.setdefault('meta', {})['live'] = False
 
     return {
         'nodes': nodes,
