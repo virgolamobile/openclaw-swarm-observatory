@@ -2,7 +2,7 @@
 
 [![Tests](https://github.com/virgolamobile/openclaw-swarm-observatory/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/virgolamobile/openclaw-swarm-observatory/actions/workflows/tests.yml)
 
-This project is a real-time dashboard for observing OpenClaw agent swarms. It helps answer three practical questions: what is happening now, why it happened, and where that decision came from.
+This project is a real-time dashboard for observing OpenClaw agent swarms. It supports inspection of current state, decision causes, and document-level provenance.
 
 ![OpenClaw Observatory Dashboard](screenshot.png)
 
@@ -10,9 +10,9 @@ This project is a real-time dashboard for observing OpenClaw agent swarms. It he
 
 OpenClaw Agent Dashboard is a passive observability layer for OpenClaw systems. It aggregates telemetry, timelines, and documentation context so behavior can be inspected without changing agent logic.
 
-## Why it is useful
+## Usage flow
 
-You can start from a global view, move to a single agent, and then inspect one decision node with its constraints and provenance. This reduces the amount of context-switching between logs, terminals, and markdown notes during debugging.
+Start from the global view, move to a single agent, then inspect one decision node with constraints and provenance. This keeps analysis in one place during debugging.
 
 ## Core capabilities
 
