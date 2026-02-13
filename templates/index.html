@@ -868,13 +868,7 @@
 
         function agentColor(name) {
             const key = String(name || '').trim().toLowerCase();
-            const fixed = {
-                europa: '#5b8cff',
-                roma: '#f59e0b',
-                mercurio: '#16c784',
-                elara: '#c084fc',
-            };
-            if (fixed[key]) return fixed[key];
+            if (!key) return 'hsl(220 74% 62%)';
 
             let hash = 0;
             for (let i = 0; i < key.length; i += 1) {
