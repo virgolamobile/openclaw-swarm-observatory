@@ -1140,116 +1140,109 @@ def build_causal_graph(snapshot, decisions, cron_timeline, context_roots):
         })
 
     now_ts = time.time()
-    live_window_sec = 110
+    live_tail_sec = 5.0
 
-    latest_action = None
-    latest_action_score = -1.0
-    for action_id, row, abs_idx, decision_id in action_nodes:
-        ts_score = parse_any_ts(row.get('ts'))
-        score = ts_score if ts_score > 0 else float(abs_idx)
-        if score > latest_action_score:
-            latest_action_score = score
-            latest_action = (action_id, decision_id)
+    def set_node_live(node_id, start_ts, activity_duration_sec):
+        if not node_id:
+            return False
+        if not isinstance(start_ts, (int, float)) or start_ts <= 0:
+            return False
+        duration = max(0.0, float(activity_duration_sec or 0.0))
+        expires_at = start_ts + duration + live_tail_sec
+        if now_ts < start_ts or now_ts > expires_at:
+            return False
+        node = node_by_id.get(node_id)
+        if not node:
+            return False
+        meta = node.setdefault('meta', {})
+        meta['live'] = True
+        meta['live_started_at'] = start_ts
+        meta['live_expires_at'] = expires_at
+        meta['activity_duration_sec'] = duration
+        return True
 
-    latest_decision = None
-    latest_decision_score = -1.0
-    for decision_id in decision_nodes:
-        decision_node = node_by_id.get(decision_id)
-        ts_score = parse_any_ts((decision_node or {}).get('meta', {}).get('ts'))
-        score = ts_score if ts_score > 0 else -1.0
-        if score > latest_decision_score:
-            latest_decision_score = score
-            latest_decision = decision_id
+    decision_ts_by_idx = {}
+    for idx, ts in decision_times:
+        decision_ts_by_idx[idx] = ts
 
-    trigger_mode = None
-    if latest_action_score > 0 and (now_ts - latest_action_score) <= live_window_sec:
-        trigger_mode = 'action'
-    if latest_decision_score > 0 and (now_ts - latest_decision_score) <= live_window_sec:
-        if trigger_mode != 'action' or latest_decision_score >= latest_action_score:
-            trigger_mode = 'decision'
+    live_decision_nodes = []
+    for idx, decision_id in enumerate(decision_nodes):
+        start_ts = decision_ts_by_idx.get(idx, 0.0)
+        if start_ts <= 0:
+            continue
+        if idx > 0:
+            newer_ts = decision_ts_by_idx.get(idx - 1, 0.0)
+            if newer_ts > start_ts:
+                activity_sec = min(max(newer_ts - start_ts, 0.8), 180.0)
+            else:
+                activity_sec = 1.6
+        else:
+            activity_sec = 1.6
 
-    if trigger_mode == 'action' and latest_action:
-        action_id, decision_id = latest_action
-        action_node = node_by_id.get(action_id)
-        if action_node:
-            action_node.setdefault('meta', {})['live'] = True
-            action_node.setdefault('meta', {})['trigger_source'] = True
-            action_node.setdefault('meta', {})['live_expires_at'] = now_ts + live_window_sec
-        if decision_id:
-            decision_node = node_by_id.get(decision_id)
-            if decision_node:
-                decision_node.setdefault('meta', {})['live'] = True
-                decision_node.setdefault('meta', {})['trigger_source'] = True
-                decision_node.setdefault('meta', {})['live_expires_at'] = now_ts + live_window_sec
-
-    if trigger_mode == 'decision' and latest_decision:
-        decision_node = node_by_id.get(latest_decision)
-        if decision_node:
-            decision_node.setdefault('meta', {})['live'] = True
-            decision_node.setdefault('meta', {})['trigger_source'] = True
-            decision_node.setdefault('meta', {})['live_expires_at'] = now_ts + live_window_sec
+        if set_node_live(decision_id, start_ts, activity_sec):
+            live_decision_nodes.append((decision_id, start_ts))
+            decision_node = node_by_id.get(decision_id) or {}
             decision_idx = decision_node.get('meta', {}).get('decision_index')
             if isinstance(decision_idx, int):
                 for n in nodes:
                     nid = str(n.get('id', ''))
                     if nid.startswith(f'reason:{decision_idx}:') or nid == f'signal:{decision_idx}':
-                        n.setdefault('meta', {})['live'] = True
-                        n.setdefault('meta', {})['live_expires_at'] = now_ts + live_window_sec
+                        set_node_live(nid, start_ts, activity_sec)
 
-    def mark_latest(group_name, limit=1):
-        candidates = [n for n in nodes if n.get('group') == group_name]
-        if not candidates:
-            return []
-        scored = []
-        for node in candidates:
-            ts_score = parse_any_ts(node.get('meta', {}).get('ts'))
-            scored.append((ts_score, str(node.get('id', '')), node))
-        scored.sort(key=lambda item: (item[0], item[1]), reverse=True)
-        picked = [item[2] for item in scored[:limit]]
-        for node in picked:
-            ts_score = parse_any_ts(node.get('meta', {}).get('ts'))
-            if ts_score > 0 and (now_ts - ts_score) <= live_window_sec:
-                node.setdefault('meta', {})['live'] = True
-                node.setdefault('meta', {})['live_expires_at'] = ts_score + live_window_sec
-        return picked
+    live_action_nodes = []
+    for action_id, row, _abs_idx, _decision_id in action_nodes:
+        start_ts = parse_any_ts(row.get('ts'))
+        if start_ts <= 0:
+            continue
+        kind = str(row.get('kind', '')).lower()
+        if kind == 'next_run':
+            continue
 
-    live_nodes = []
-    live_nodes.extend(mark_latest('decision', limit=2))
-    live_nodes.extend(mark_latest('action', limit=2))
-    live_nodes.extend(mark_latest('outcome_ok', limit=1))
-    live_nodes.extend(mark_latest('outcome_bad', limit=1))
+        duration_sec = 0.0
+        raw_duration_ms = row.get('duration_ms')
+        if isinstance(raw_duration_ms, (int, float)) and raw_duration_ms > 0:
+            duration_sec = float(raw_duration_ms) / 1000.0
+        elif kind in {'started', 'run'}:
+            duration_sec = 3.0
+        elif kind == 'finished':
+            duration_sec = 1.2
 
-    for node in live_nodes:
-        node_id = str(node.get('id', ''))
-        if node_id.startswith('decision:'):
-            decision_idx = node.get('meta', {}).get('decision_index')
-            if isinstance(decision_idx, int):
-                for n in nodes:
-                    if n.get('id', '').startswith(f'reason:{decision_idx}:') or n.get('id', '') == f'signal:{decision_idx}':
-                        n.setdefault('meta', {})['live'] = True
+        if set_node_live(action_id, start_ts, duration_sec):
+            live_action_nodes.append((action_id, start_ts))
+
+    for action_id, row, abs_idx, _decision_id in action_nodes:
+        outcome_id = f'outcome:{abs_idx}'
+        start_ts = parse_any_ts(row.get('ts'))
+        if start_ts <= 0:
+            continue
+        kind = str(row.get('kind', '')).lower()
+        if kind == 'next_run':
+            continue
+
+        raw_duration_ms = row.get('duration_ms')
+        if isinstance(raw_duration_ms, (int, float)) and raw_duration_ms > 0:
+            duration_sec = float(raw_duration_ms) / 1000.0
+        else:
+            duration_sec = 1.2
+        set_node_live(outcome_id, start_ts, duration_sec)
+
+    trigger_id = None
+    if live_action_nodes:
+        latest_action_id, _ = max(live_action_nodes, key=lambda item: item[1])
+        linked_decision = next((decision_id for action_id, _row, _abs_idx, decision_id in action_nodes if action_id == latest_action_id), None)
+        trigger_id = linked_decision or latest_action_id
+    elif live_decision_nodes:
+        trigger_id, _ = max(live_decision_nodes, key=lambda item: item[1])
+
+    if trigger_id and trigger_id in node_by_id:
+        node_by_id[trigger_id].setdefault('meta', {})['trigger_source'] = True
 
     live_ids = {str(n.get('id', '')) for n in nodes if n.get('meta', {}).get('live')}
     for edge in edges:
         source = str(edge.get('source', ''))
         target = str(edge.get('target', ''))
-        if source in live_ids or target in live_ids:
-            edge.setdefault('meta', {})['live'] = True
-
-    for node in nodes:
-        meta = node.get('meta', {}) if isinstance(node.get('meta', {}), dict) else {}
-        expires_at = meta.get('live_expires_at')
-        if meta.get('live') and isinstance(expires_at, (int, float)) and expires_at < now_ts:
-            meta['live'] = False
-            meta['trigger_source'] = False
-            node['meta'] = meta
-
-    for edge in edges:
-        if not edge.get('meta', {}).get('live'):
-            continue
-        source_meta = node_by_id.get(str(edge.get('source', '')), {}).get('meta', {})
-        target_meta = node_by_id.get(str(edge.get('target', '')), {}).get('meta', {})
-        if not source_meta.get('live') and not target_meta.get('live'):
-            edge.setdefault('meta', {})['live'] = False
+        edge_meta = edge.setdefault('meta', {})
+        edge_meta['live'] = bool(source in live_ids or target in live_ids)
 
     return {
         'nodes': nodes,
