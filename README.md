@@ -2,7 +2,7 @@
 
 [![Tests](https://github.com/virgolamobile/openclaw-swarm-observatory/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/virgolamobile/openclaw-swarm-observatory/actions/workflows/tests.yml)
 
-When a multi-agent swarm starts making decisions at speed, logs alone become a detective novel written by four unreliable narrators. This dashboard turns that chaos into something you can actually reason about: what happened, why it happened, what influenced it, and what to inspect next. 🛰️
+When a multi-agent swarm starts making decisions at speed, logs alone become a detective novel written by four unreliable narrators. I built this dashboard to turn that chaos into something you can actually reason about: what happened, why it happened, what influenced it, and what to inspect next.
 
 ![OpenClaw Observatory Dashboard](screenshot.png)
 
@@ -14,7 +14,7 @@ The goal is simple: move from “something feels off” to “here is the exact 
 
 ## Why it feels useful in practice
 
-You start from a global view, zoom into one agent, then drill into a single node decision with provenance and constraints attached. Instead of bouncing between terminals and markdown files, you follow one coherent thread from signal to explanation. If your swarm behaves like an over-caffeinated jazz quartet, this gives you the score. 🎷
+You start from a global view, zoom into one agent, then drill into a single node decision with provenance and constraints attached. Instead of bouncing between terminals and markdown files, you follow one coherent thread from signal to explanation. If your swarm behaves like an over-caffeinated jazz quartet, this gives you the score.
 
 ## Core capabilities
 
@@ -73,13 +73,13 @@ gunicorn --preload -k eventlet -w 1 -b 0.0.0.0:5050 app:app
 ./venv/bin/python -m pytest -q
 ```
 
-## Documentation strategy (Repo + Wiki)
+## Documentation
 
-Yes, GitHub Wiki is a great fit.
+Project documentation is split in a practical way:
 
-Use this repository `README` as the front door (what it is, quick start, screenshot, key links), keep technical source-of-truth docs versioned in `docs/`, and use the Wiki for narrative guides, walkthroughs, and evolving operational playbooks that benefit from lightweight editing.
-
-In short: stable specs in-repo, living knowledge in Wiki, and the README as the map between them. 🧭
+- `README.md` for orientation, setup, and quick usage
+- `docs/` for versioned technical documentation
+- GitHub Wiki for operational notes, walkthroughs, and playbooks that evolve over time
 
 ## Author
 
