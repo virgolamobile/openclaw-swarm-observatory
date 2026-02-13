@@ -84,6 +84,68 @@
         }
         .meta { color: var(--muted); font-size: .85rem; }
         .meta-actions { display: flex; align-items: center; gap: 8px; }
+        .privacy-toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            padding: 4px 10px 4px 8px;
+            background: #111a31;
+            color: #d8e4ff;
+            font-size: .75rem;
+            cursor: pointer;
+            user-select: none;
+            transition: border-color .16s ease, box-shadow .16s ease, background .16s ease;
+        }
+        .privacy-toggle:hover { border-color: #4b6192; }
+        .privacy-toggle input {
+            position: absolute;
+            opacity: 0;
+            pointer-events: none;
+            width: 0;
+            height: 0;
+        }
+        .privacy-switch-track {
+            position: relative;
+            width: 34px;
+            height: 19px;
+            border-radius: 999px;
+            background: #243559;
+            border: 1px solid rgba(255,255,255,.2);
+            transition: background .18s ease, border-color .18s ease;
+        }
+        .privacy-switch-thumb {
+            position: absolute;
+            top: 1px;
+            left: 1px;
+            width: 15px;
+            height: 15px;
+            border-radius: 999px;
+            background: #d7e6ff;
+            box-shadow: 0 1px 5px rgba(0,0,0,.35);
+            transition: transform .18s ease, background .18s ease;
+        }
+        .privacy-toggle input:checked + .privacy-switch-track {
+            background: #1f3f7d;
+            border-color: #5b8cff;
+        }
+        .privacy-toggle input:checked + .privacy-switch-track .privacy-switch-thumb {
+            transform: translateX(15px);
+            background: #f2f7ff;
+        }
+        .privacy-toggle:has(input:checked) {
+            border-color: #5b8cff;
+            background: #132750;
+            box-shadow: inset 0 0 0 1px rgba(91,140,255,.18);
+        }
+        .privacy-blur {
+            filter: blur(4px);
+            transition: filter .18s ease;
+        }
+        .privacy-blur:hover {
+            filter: blur(6px);
+        }
         .header-link {
             border: 1px solid var(--border);
             background: #111a31;
@@ -704,7 +766,10 @@
             transition: filter .45s ease, stroke-width .45s ease, opacity .45s ease, stroke .45s ease;
         }
         .graph-node.live .graph-node-rect {
-            animation: graphPulseNode 1.15s ease-in-out infinite;
+            filter: drop-shadow(0 0 7px rgba(22,199,132,.32));
+        }
+        .graph-node.live-fresh .graph-node-rect {
+            animation: graphPulseNode .88s ease-in-out 2;
         }
         .graph-node.weight-up .graph-node-rect {
             animation: graphWeightUp 1.1s ease;
@@ -728,7 +793,15 @@
             opacity: .72;
         }
         .graph-edge.live .graph-edge-line {
-            animation: graphPulseEdge 0.95s ease-in-out infinite, graphDataFlow 1.15s linear infinite;
+            opacity: .9;
+            stroke-dasharray: 8 6;
+        }
+        .graph-edge.live-fresh .graph-edge-line {
+            animation: graphEdgeEnter .42s ease-out 1, graphPulseEdge 0.95s ease-in-out 2, graphDataFlow 1.15s linear 2;
+            stroke-dasharray: 8 6;
+        }
+        .graph-edge.live-fade .graph-edge-line {
+            animation: graphEdgeExit .52s ease-in 1;
             stroke-dasharray: 8 6;
         }
         .graph-edge.trigger-flow .graph-edge-line {
@@ -763,6 +836,28 @@
         @keyframes graphPulseEdge {
             0%, 100% { opacity: .72; }
             50% { opacity: 1; }
+        }
+        @keyframes graphEdgeEnter {
+            0% {
+                opacity: .18;
+                stroke-dashoffset: 18;
+                filter: drop-shadow(0 0 0 rgba(141,176,255,0));
+            }
+            100% {
+                opacity: .9;
+                stroke-dashoffset: 0;
+                filter: drop-shadow(0 0 6px rgba(141,176,255,.25));
+            }
+        }
+        @keyframes graphEdgeExit {
+            0% {
+                opacity: .82;
+                stroke-dashoffset: 0;
+            }
+            100% {
+                opacity: .22;
+                stroke-dashoffset: -12;
+            }
         }
         @keyframes graphDataFlow {
             from { stroke-dashoffset: 0; }
@@ -1479,6 +1574,12 @@
             </h1>
             <div class="meta-actions">
                 <button class="header-link" id="open-docs-index" title="Open documentation index">Docs index</button>
+                <label class="privacy-toggle" title="Attiva/disattiva offuscamento dati sensibili" aria-label="Privacy toggle">
+                    <span aria-hidden="true">👀</span>
+                    <input type="checkbox" id="privacy-toggle" />
+                    <span class="privacy-switch-track" aria-hidden="true"><span class="privacy-switch-thumb"></span></span>
+                    <span>Privacy</span>
+                </label>
                 <div class="meta" id="last-refresh">refresh: --</div>
             </div>
         </div>
@@ -1617,16 +1718,18 @@
             drilldownCacheTtlMs: 12000,
             drilldownLoadingAgent: null,
             drilldownAbortController: null,
+            drilldownFetchAgent: null,
             activeTab: 'decisions',
             graphViewport: { scale: 1, tx: 0, ty: 0 },
             graphViewportFullscreen: { scale: 1, tx: 0, ty: 0 },
             graphNodeWeights: { graph: {}, graphfs: {} },
+            graphLiveState: { graph: { nodes: {}, edges: {} }, graphfs: { nodes: {}, edges: {} } },
             graphInteractionTs: 0,
             nodeDetails: null,
             graphJump: null,
             capabilities: null,
-            graphOutcomeLimitDefault: 5,
-            graphOutcomeLimit: null,
+            graphActivationLimitDefault: 5,
+            graphActivationLimit: null,
             docsIndex: [],
             docsCurrent: null,
             docsCurrentAnchor: null,
@@ -1638,6 +1741,7 @@
             overviewBacklink: null,
             telemetryStatus: null,
             agentTelemetryHistory: {},
+            privacyModeEnabled: false,
             refreshInFlight: false,
             refreshQueued: false,
             drilldownRequestSeq: 0,
@@ -1664,6 +1768,113 @@
         function esc(value) {
             const s = String(value ?? '');
             return s.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
+        }
+
+        function buildSensitiveRanges(rawText) {
+            const text = String(rawText ?? '');
+            if (!text) return [];
+
+            const ranges = [];
+            const pushRange = (start, end) => {
+                if (!Number.isFinite(start) || !Number.isFinite(end)) return;
+                const s = Math.max(0, Math.min(text.length, Math.floor(start)));
+                const e = Math.max(0, Math.min(text.length, Math.floor(end)));
+                if (e <= s) return;
+                ranges.push([s, e]);
+            };
+
+            const directPatterns = [
+                /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi,
+                /@[a-z0-9_]{5,32}\b/gi,
+                /\b(?:telegram(?:_id)?|tg(?:_id)?|chat_id|user_id|from_id|id)\s*[:=#-]?\s*-?\d{5,}\b/gi,
+                /\b\+?\d(?:[\s-]?\d){7,14}\b/g,
+            ];
+
+            directPatterns.forEach((pattern) => {
+                pattern.lastIndex = 0;
+                let match;
+                while ((match = pattern.exec(text)) !== null) {
+                    pushRange(match.index, match.index + match[0].length);
+                    if (match[0].length === 0) pattern.lastIndex += 1;
+                }
+            });
+
+            const labeledName = /\b(?:name|nome|cognome|utente|user|from|actor)\s*[:=-]?\s*([A-ZÀ-ÖØ-Ý][a-zà-öø-ÿ'’]{1,}(?:\s+[A-ZÀ-ÖØ-Ý][a-zà-öø-ÿ'’]{1,}){0,2})/g;
+            labeledName.lastIndex = 0;
+            let lm;
+            while ((lm = labeledName.exec(text)) !== null) {
+                const captured = String(lm[1] || '');
+                if (captured) {
+                    const offset = lm[0].indexOf(captured);
+                    if (offset >= 0) {
+                        pushRange(lm.index + offset, lm.index + offset + captured.length);
+                    }
+                }
+                if (lm[0].length === 0) labeledName.lastIndex += 1;
+            }
+
+            if (!ranges.length) return [];
+            ranges.sort((a, b) => a[0] - b[0]);
+            const merged = [ranges[0]];
+            for (let i = 1; i < ranges.length; i += 1) {
+                const current = ranges[i];
+                const prev = merged[merged.length - 1];
+                if (current[0] <= prev[1]) {
+                    prev[1] = Math.max(prev[1], current[1]);
+                } else {
+                    merged.push(current);
+                }
+            }
+            return merged;
+        }
+
+        function privacyHtml(value) {
+            const text = String(value ?? '');
+            if (!store.privacyModeEnabled || !text) return esc(text);
+            const ranges = buildSensitiveRanges(text);
+            if (!ranges.length) return esc(text);
+
+            let cursor = 0;
+            let out = '';
+            ranges.forEach(([start, end]) => {
+                if (start > cursor) out += esc(text.slice(cursor, start));
+                out += `<span class="privacy-blur">${esc(text.slice(start, end))}</span>`;
+                cursor = end;
+            });
+            if (cursor < text.length) out += esc(text.slice(cursor));
+            return out;
+        }
+
+        function privacyPlain(value) {
+            const text = String(value ?? '');
+            if (!store.privacyModeEnabled || !text) return text;
+            const ranges = buildSensitiveRanges(text);
+            if (!ranges.length) return text;
+            const chars = Array.from(text);
+            ranges.forEach(([start, end]) => {
+                for (let i = start; i < end && i < chars.length; i += 1) {
+                    if (chars[i] !== ' ') chars[i] = '•';
+                }
+            });
+            return chars.join('');
+        }
+
+        function setPrivacyMode(enabled) {
+            store.privacyModeEnabled = Boolean(enabled);
+            localStorage.setItem('openclaw.privacy.mode', store.privacyModeEnabled ? '1' : '0');
+            renderState.agentSignatures.clear();
+            renderState.interactionsSignature = '';
+            renderState.drilldownSignature = '';
+            renderState.overviewSignature = '';
+            renderState.kpiSignature = '';
+            scheduleRender({
+                agents: true,
+                interactions: true,
+                kpi: true,
+                drilldown: true,
+                overview: true,
+                refresh: true,
+            });
         }
 
         function markContentUpdate(node) {
@@ -1732,9 +1943,9 @@
 
             return `
                 <details class="trace-expand"${openAttr}>
-                    <summary><strong>${esc(label)}:</strong> ${esc(preview + previewTail)}</summary>
+                    <summary><strong>${esc(label)}:</strong> ${privacyHtml(preview + previewTail)}</summary>
                     <ul class="trace-list">
-                        ${items.map((item) => `<li>${esc(item)}</li>`).join('')}
+                        ${items.map((item) => `<li>${privacyHtml(item)}</li>`).join('')}
                     </ul>
                 </details>
             `;
@@ -1866,7 +2077,7 @@
                     ${detailSections.map((entry) => `
                         <div class="reasoning-details-row">
                             <span class="reasoning-details-label">${esc(entry.label)}</span>
-                            <ul class="reasoning-compact-list">${entry.items.map((item) => `<li>${esc(item)}</li>`).join('')}</ul>
+                            <ul class="reasoning-compact-list">${entry.items.map((item) => `<li>${privacyHtml(item)}</li>`).join('')}</ul>
                         </div>
                     `).join('')}
                 </details>
@@ -1878,14 +2089,14 @@
                         <tbody>
                             <tr>
                                 <th>Outcome</th>
-                                <td>${esc(outcomeText)} ${chunks.decisionTag ? `<span class="reason-tag">${esc(chunks.decisionTag)}</span>` : ''}</td>
+                                <td>${privacyHtml(outcomeText)} ${chunks.decisionTag ? `<span class="reason-tag">${esc(chunks.decisionTag)}</span>` : ''}</td>
                             </tr>
-                            ${chunks.speaker ? `<tr><th>Speaker</th><td>${esc(chunks.speaker)}</td></tr>` : ''}
-                            <tr><th>Signal</th><td>${esc(signalText)}</td></tr>
-                            <tr><th>Trigger</th><td>${esc(triggerText)}</td></tr>
-                            <tr><th>Rule</th><td>${esc(constraintsText)}</td></tr>
-                            <tr><th>Evidence</th><td>${esc(evidenceText)}</td></tr>
-                            <tr><th>Source</th><td>${esc(sourceText)}</td></tr>
+                            ${chunks.speaker ? `<tr><th>Speaker</th><td>${privacyHtml(chunks.speaker)}</td></tr>` : ''}
+                            <tr><th>Signal</th><td>${privacyHtml(signalText)}</td></tr>
+                            <tr><th>Trigger</th><td>${privacyHtml(triggerText)}</td></tr>
+                            <tr><th>Rule</th><td>${privacyHtml(constraintsText)}</td></tr>
+                            <tr><th>Evidence</th><td>${privacyHtml(evidenceText)}</td></tr>
+                            <tr><th>Source</th><td>${privacyHtml(sourceText)}</td></tr>
                         </tbody>
                     </table>
                     ${detailsHtml}
@@ -2074,7 +2285,7 @@
                     this.innerHTML = this._rows.map((it) => `
                         <div class="row">
                             <div>${agentBadge(it.source, true)} → ${agentBadge(it.target, true)}</div>
-                            <div>${esc(it.text || '')}</div>
+                            <div>${privacyHtml(it.text || '')}</div>
                             <div class="when">${esc(it.ts || '')}</div>
                         </div>
                     `).join('');
@@ -2084,8 +2295,8 @@
 
                 this.innerHTML = this._rows.map((it) => `
                     <div class="row">
-                        <div>${agentBadge(it.agent, true)} · ${esc(it.actor || 'unknown')}</div>
-                        <div>${esc(it.text || '')}</div>
+                        <div>${agentBadge(it.agent, true)} · ${privacyHtml(it.actor || 'unknown')}</div>
+                        <div>${privacyHtml(it.text || '')}</div>
                         <div class="when">${esc(it.ts || '')}</div>
                     </div>
                 `).join('');
@@ -2553,37 +2764,40 @@
             renderState.overviewSignature = '';
         }
 
-        function openGraphFullscreenModal() {
+        function renderGraphFullscreenContent() {
             const modal = document.getElementById('graph-fullscreen-modal');
             const content = document.getElementById('graph-fullscreen-content');
+            if (!modal || !content || !modal.classList.contains('open')) return;
             const graph = store.drilldown?.depth?.causal_graph || { nodes: [], edges: [] };
-            if (!modal || !content) return;
+            content.innerHTML = renderCausalGraph(graph, { prefix: 'graphfs', expandable: false });
+            initGraphViewport('graphfs');
+
+            const activationLimitSel = document.getElementById('graphfs-activation-limit');
+            if (activationLimitSel) {
+                activationLimitSel.addEventListener('change', async () => {
+                    const nextLimit = normalizeActivationLimit(activationLimitSel.value, store.graphActivationLimitDefault);
+                    store.graphActivationLimit = nextLimit;
+                    localStorage.setItem('openclaw.graph.maxActivations', String(nextLimit));
+                    if (store.selectedAgent) {
+                        await openDrilldown(store.selectedAgent, { background: true, bypassCache: true });
+                        renderGraphFullscreenContent();
+                    }
+                });
+            }
+        }
+
+        function openGraphFullscreenModal() {
+            const modal = document.getElementById('graph-fullscreen-modal');
+            if (!modal) return;
 
             store.graphViewportFullscreen = {
                 scale: store.graphViewport.scale,
                 tx: store.graphViewport.tx,
                 ty: store.graphViewport.ty,
             };
-
-            content.innerHTML = renderCausalGraph(graph, { prefix: 'graphfs', expandable: false });
             modal.classList.add('open');
             modal.setAttribute('aria-hidden', 'false');
-            initGraphViewport('graphfs');
-
-            const outcomeLimitSel = document.getElementById('graphfs-outcome-limit');
-            if (outcomeLimitSel) {
-                outcomeLimitSel.addEventListener('change', async () => {
-                    const nextLimit = normalizeOutcomeLimit(outcomeLimitSel.value, store.graphOutcomeLimitDefault);
-                    store.graphOutcomeLimit = nextLimit;
-                    localStorage.setItem('openclaw.graph.maxOutcomes', String(nextLimit));
-                    if (store.selectedAgent) {
-                        await openDrilldown(store.selectedAgent, { background: true, bypassCache: true });
-                        const refreshed = store.drilldown?.depth?.causal_graph || { nodes: [], edges: [] };
-                        content.innerHTML = renderCausalGraph(refreshed, { prefix: 'graphfs', expandable: false });
-                        initGraphViewport('graphfs');
-                    }
-                });
-            }
+            renderGraphFullscreenContent();
         }
 
         function closeGraphFullscreenModal() {
@@ -2710,7 +2924,7 @@
                 ? `<ul class="overview-decision-list">${decisionRows.map((row) => `
                     <li class="overview-decision-item">
                         <div class="overview-decision-meta">${esc(row.ts)} · confidence=${esc(row.confidence)}</div>
-                        <div class="overview-decision-text">${esc(row.text)}</div>
+                        <div class="overview-decision-text">${privacyHtml(row.text)}</div>
                         <button class="overview-cta" data-overview-open-graph="${esc(agentName)}" data-overview-decision-index="${row.index}">Open in Causal Graph (level-3)</button>
                     </li>
                 `).join('')}</ul>`
@@ -2959,7 +3173,7 @@
             return false;
         }
 
-        function normalizeOutcomeLimit(rawValue, fallbackValue = 5) {
+        function normalizeActivationLimit(rawValue, fallbackValue = 5) {
             const parsed = Number.parseInt(String(rawValue ?? ''), 10);
             const fallback = Number.isFinite(Number(fallbackValue)) ? Number(fallbackValue) : 5;
             const base = Number.isFinite(parsed) ? parsed : fallback;
@@ -2972,33 +3186,47 @@
                 if (!response.ok) return;
                 const payload = await response.json();
                 store.capabilities = payload;
-                const fromBackend = normalizeOutcomeLimit(payload?.capabilities?.graph?.max_outcomes, 5);
-                store.graphOutcomeLimitDefault = fromBackend;
+                const fromBackend = normalizeActivationLimit(payload?.capabilities?.graph?.max_activations, 5);
+                store.graphActivationLimitDefault = fromBackend;
 
-                const saved = localStorage.getItem('openclaw.graph.maxOutcomes');
-                const selected = normalizeOutcomeLimit(saved, fromBackend);
-                store.graphOutcomeLimit = selected;
+                const saved = localStorage.getItem('openclaw.graph.maxActivations');
+                const selected = normalizeActivationLimit(saved, fromBackend);
+                store.graphActivationLimit = selected;
             } catch (error) {
-                const fallback = normalizeOutcomeLimit(store.graphOutcomeLimitDefault, 5);
-                if (!store.graphOutcomeLimit) store.graphOutcomeLimit = fallback;
+                const fallback = normalizeActivationLimit(store.graphActivationLimitDefault, 5);
+                if (!store.graphActivationLimit) store.graphActivationLimit = fallback;
             }
         }
 
         function buildDrilldownUrl(agentName) {
+            const options = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : {};
             const base = `/drilldown/${encodeURIComponent(agentName)}`;
-            const limit = normalizeOutcomeLimit(store.graphOutcomeLimit, store.graphOutcomeLimitDefault);
-            return `${base}?max_outcomes=${encodeURIComponent(String(limit))}`;
+            const limit = normalizeActivationLimit(store.graphActivationLimit, store.graphActivationLimitDefault);
+            const params = [`max_activations=${encodeURIComponent(String(limit))}`];
+            if (options && options.cacheBust) {
+                params.push(`_ts=${Date.now()}`);
+            }
+            return `${base}?${params.join('&')}`;
         }
 
         function buildNodeDrilldownUrl(agentName, nodeId) {
+            const options = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : {};
             const base = `/drilldown/${encodeURIComponent(agentName)}/node/${encodeURIComponent(nodeId)}`;
-            const limit = normalizeOutcomeLimit(store.graphOutcomeLimit, store.graphOutcomeLimitDefault);
-            return `${base}?max_outcomes=${encodeURIComponent(String(limit))}`;
+            const limit = normalizeActivationLimit(store.graphActivationLimit, store.graphActivationLimitDefault);
+            const params = [`max_activations=${encodeURIComponent(String(limit))}`];
+            if (options && options.cacheBust) {
+                params.push(`_ts=${Date.now()}`);
+            }
+            return `${base}?${params.join('&')}`;
         }
 
         async function openDrilldown(agentName, options = {}) {
             const background = Boolean(options.background);
             const bypassCache = Boolean(options.bypassCache);
+            const cacheBust = Boolean(options.cacheBust || bypassCache);
+            if (background && store.drilldownFetchAgent && String(store.drilldownFetchAgent) === String(agentName || '')) {
+                return;
+            }
             const prevSelectedAgent = store.selectedAgent;
             const changingAgent = String(prevSelectedAgent || '') !== String(agentName || '');
             store.selectedAgent = agentName;
@@ -3006,6 +3234,7 @@
                 store.nodeDetails = null;
                 store.graphJump = null;
                 store.graphNodeWeights = { graph: {}, graphfs: {} };
+                store.graphLiveState = { graph: { nodes: {}, edges: {} }, graphfs: { nodes: {}, edges: {} } };
             }
             const selectedBefore = store.drilldown?.agent || '';
             const cacheEntry = store.drilldownByAgent.get(agentName);
@@ -3029,8 +3258,9 @@
             store.drilldownRequestSeq = requestSeq;
             const controller = new AbortController();
             store.drilldownAbortController = controller;
+            store.drilldownFetchAgent = agentName;
             try {
-                const response = await fetch(buildDrilldownUrl(agentName), { signal: controller.signal });
+                const response = await fetch(buildDrilldownUrl(agentName, { cacheBust }), { signal: controller.signal });
                 if (requestSeq !== store.drilldownRequestSeq) return;
                 if (!response.ok) {
                     if (!hasFreshCache) store.drilldown = null;
@@ -3058,6 +3288,9 @@
                 if (store.drilldownAbortController === controller) {
                     store.drilldownAbortController = null;
                 }
+                if (String(store.drilldownFetchAgent || '') === String(agentName || '')) {
+                    store.drilldownFetchAgent = null;
+                }
             }
         }
 
@@ -3083,10 +3316,10 @@
                         ${agentBadge(item.agent)}
                     </div>
                     <div class="kv"><span class="muted">Status:</span> <span class="${statusClass(item.status)}">${esc(item.status || 'unknown')}</span></div>
-                    <div class="kv"><span class="muted">Task:</span> ${esc(item.task || '—')}</div>
+                    <div class="kv"><span class="muted">Task:</span> ${privacyHtml(item.task || '—')}</div>
                     <div class="kv"><span class="muted">Cron:</span> ${esc(item.cron_jobs ?? 0)} ${interrupted ? `<span class="chip bad">${interrupted} non-ok</span>` : ''}</div>
-                    <div class="kv"><span class="muted">Missions:</span> ${esc(missions)}</div>
-                    <div class="kv"><span class="muted">Last event:</span> ${esc(item.last_seen || '—')}</div>
+                    <div class="kv"><span class="muted">Missions:</span> ${privacyHtml(missions)}</div>
+                    <div class="kv"><span class="muted">Last event:</span> ${privacyHtml(item.last_seen || '—')}</div>
                     <div class="agent-click-hint">Open investigation <span aria-hidden="true">→</span></div>
                 </div>
                 <div class="agent-side">
@@ -3283,6 +3516,16 @@
             const loading = Boolean(store.drilldownLoadingAgent && String(store.selectedAgent || '') === String(store.drilldownLoadingAgent || ''));
 
             const depth = payload?.depth || {};
+            const graphNodes = Array.isArray(depth?.causal_graph?.nodes) ? depth.causal_graph.nodes : [];
+            const graphEdges = Array.isArray(depth?.causal_graph?.edges) ? depth.causal_graph.edges : [];
+            const liveNodeCount = graphNodes.filter((node) => Boolean(node?.meta?.live)).length;
+            const liveEdgeCount = graphEdges.filter((edge) => Boolean(edge?.meta?.live)).length;
+            const triggerNodeIds = graphNodes
+                .filter((node) => Boolean(node?.meta?.trigger_source))
+                .map((node) => String(node?.id || ''))
+                .sort()
+                .join('|');
+            const graphFreshTs = Number(depth?.causal_graph?.meta?.generated_at_ts || 0);
             const signature = [
                 store.activeTab,
                 payload?.found ? 1 : 0,
@@ -3291,8 +3534,12 @@
                 (depth?.timeline || []).length,
                 (depth?.cron_timeline || []).length,
                 (depth?.context_roots || []).length,
-                (depth?.causal_graph?.nodes || []).length,
-                (depth?.causal_graph?.edges || []).length,
+                graphNodes.length,
+                graphEdges.length,
+                liveNodeCount,
+                liveEdgeCount,
+                triggerNodeIds,
+                graphFreshTs,
                 store.nodeDetails?.node?.id || '',
                 store.overviewBacklink?.agent || '',
                 store.overviewBacklink?.decisionIndex ?? '',
@@ -3374,7 +3621,7 @@
                 body.innerHTML = rows.length ? rows.map((row) => `
                     <div class="trace-item">
                         <div><span class="pill">${esc(row.source || 'source')}</span><span class="pill">${esc(row.type || 'type')}</span></div>
-                        <div>${esc(row.text || '')}</div>
+                        <div>${privacyHtml(row.text || '')}</div>
                         <div class="when">${esc(row.ts || '')}</div>
                     </div>
                 `).join('') : 'Timeline not available.';
@@ -3424,16 +3671,17 @@
             if (store.activeTab === 'graph') {
                 body.innerHTML = renderCausalGraph(depth.causal_graph || { nodes: [], edges: [] }, { prefix: 'graph', expandable: true });
                 initGraphViewport('graph');
+                renderGraphFullscreenContent();
                 const expandBtn = document.getElementById('graph-expand-btn');
                 if (expandBtn) {
                     expandBtn.addEventListener('click', openGraphFullscreenModal);
                 }
-                const outcomeLimitSel = document.getElementById('graph-outcome-limit');
-                if (outcomeLimitSel) {
-                    outcomeLimitSel.addEventListener('change', async () => {
-                        const nextLimit = normalizeOutcomeLimit(outcomeLimitSel.value, store.graphOutcomeLimitDefault);
-                        store.graphOutcomeLimit = nextLimit;
-                        localStorage.setItem('openclaw.graph.maxOutcomes', String(nextLimit));
+                const activationLimitSel = document.getElementById('graph-activation-limit');
+                if (activationLimitSel) {
+                    activationLimitSel.addEventListener('change', async () => {
+                        const nextLimit = normalizeActivationLimit(activationLimitSel.value, store.graphActivationLimitDefault);
+                        store.graphActivationLimit = nextLimit;
+                        localStorage.setItem('openclaw.graph.maxActivations', String(nextLimit));
                         if (store.selectedAgent) {
                             await openDrilldown(store.selectedAgent, { background: true, bypassCache: true });
                         }
@@ -3515,7 +3763,7 @@
                             <div class="decision-time-strong">${esc(ts.strong)}</div>
                         </div>
                     </div>
-                    <div class="decision-line"><strong>Decision:</strong> ${esc(row.decision || '')}</div>
+                    <div class="decision-line"><strong>Decision:</strong> ${privacyHtml(row.decision || '')}</div>
                     <details class="decision-logic" ${linked ? 'open' : ''}>
                         <summary class="decision-logic-toggle" aria-label="Expand logic" title="Expand logic">
                             <span class="logic-toggle-icon" aria-hidden="true"></span>
@@ -3553,6 +3801,7 @@
 
         function groupColor(group) {
             const map = {
+                activation: '#facc15',
                 agent: '#6ea8ff',
                 root: '#f59e0b',
                 reason: '#38bdf8',
@@ -3598,6 +3847,11 @@
                 return {
                     tab: 'soul',
                     rootIndex: Number.isFinite(Number(meta.root_index)) ? Number(meta.root_index) : null,
+                };
+            }
+            if (jumpTab === 'timeline' || group === 'activation') {
+                return {
+                    tab: 'timeline',
                 };
             }
             return { tab: 'graph' };
@@ -3659,6 +3913,11 @@
             const selectedNodeId = String(store.nodeDetails?.node?.id || '');
             const previousWeights = store.graphNodeWeights[prefix] || {};
             const nextWeights = {};
+            const previousLiveState = store.graphLiveState[prefix] || { nodes: {}, edges: {} };
+            const previousNodeLive = previousLiveState.nodes || {};
+            const previousEdgeLive = previousLiveState.edges || {};
+            const nextNodeLive = {};
+            const nextEdgeLive = {};
             const triggerNodeIds = new Set(
                 nodes
                     .filter((node) => Boolean(node?.meta?.trigger_source))
@@ -3676,7 +3935,7 @@
                 return 0.45;
             };
 
-            const layers = { root: [], reason: [], signal: [], agent: [], decision: [], action: [], outcome_ok: [], outcome_bad: [], other: [] };
+            const layers = { activation: [], root: [], reason: [], signal: [], agent: [], decision: [], action: [], outcome_ok: [], outcome_bad: [], other: [] };
             nodes.forEach((node) => {
                 const g = String(node.group || 'other');
                 if (layers[g]) layers[g].push(node);
@@ -3694,7 +3953,7 @@
                 });
             });
 
-            const columns = ['root', 'reason', 'signal', 'agent', 'decision', 'action', 'outcome_ok', 'outcome_bad', 'other'];
+            const columns = ['activation', 'root', 'reason', 'signal', 'agent', 'decision', 'action', 'outcome_ok', 'outcome_bad', 'other'];
             const xStep = 232;
             const yStep = 92;
             const marginX = 40;
@@ -3720,12 +3979,17 @@
                 const y2 = t.y + 22;
                 const mx = (x1 + x2) / 2;
                 const my = (y1 + y2) / 2;
-                const edgeLabel = String(edge.label || '');
+                const edgeLabel = privacyPlain(String(edge.label || ''));
                 const edgeShort = splitGraphLabel(edgeLabel, 16, 1)[0] || '';
                 const isLive = Boolean(edge?.meta?.live);
+                const edgeKey = `${String(edge.source || '')}|${String(edge.target || '')}|${edgeLabel}`;
+                const wasLive = Boolean(previousEdgeLive[edgeKey]);
+                const isLiveFresh = isLive && !wasLive;
+                const isLiveFading = !isLive && wasLive;
+                nextEdgeLive[edgeKey] = isLive;
                 const isSelected = selectedNodeId && (String(edge.source || '') === selectedNodeId || String(edge.target || '') === selectedNodeId);
                 const isTriggerFlow = triggerNodeIds.has(String(edge.source || '')) || triggerNodeIds.has(String(edge.target || ''));
-                const edgeClass = `graph-edge ${isLive ? 'live' : ''} ${isSelected ? 'selected' : ''} ${isTriggerFlow ? 'trigger-flow' : ''}`;
+                const edgeClass = `graph-edge ${isLive ? 'live' : ''} ${isLiveFresh ? 'live-fresh' : ''} ${isLiveFading ? 'live-fade' : ''} ${isSelected ? 'selected' : ''} ${isTriggerFlow ? 'trigger-flow' : ''}`;
                 const strokeWidth = (1 + (edgeWeight(edge) * 0.9)).toFixed(2);
                 return `
                     <g class="${edgeClass}">
@@ -3738,17 +4002,21 @@
 
             const nodeSvg = Object.values(positioned).map((node) => {
                 const fill = groupColor(node.group);
-                const fullLabel = String(node.label || '');
+                const fullLabel = privacyPlain(String(node.label || ''));
                 const lines = splitGraphLabel(fullLabel, 24, 2);
                 const weight = nodeWeight(node);
                 const prevWeight = Number(previousWeights[node.id]);
                 const weightDelta = Number.isFinite(prevWeight) ? (weight - prevWeight) : 0;
                 nextWeights[node.id] = weight;
                 const isLive = Boolean(node?.meta?.live);
+                const nodeKey = String(node.id || '');
+                const wasLive = Boolean(previousNodeLive[nodeKey]);
+                const isLiveFresh = isLive && !wasLive;
+                nextNodeLive[nodeKey] = isLive;
                 const isTriggerSource = Boolean(node?.meta?.trigger_source);
                 const isSelected = selectedNodeId && String(node.id || '') === selectedNodeId;
                 const isImpact = isTriggerSource || isSelected || isLive;
-                const nodeClass = `graph-node ${isLive ? 'live' : ''} ${isSelected ? 'selected' : ''} ${isTriggerSource ? 'trigger-source' : ''} ${isImpact ? 'impact' : ''} ${weightDelta > 0.03 ? 'weight-up' : ''} ${weightDelta < -0.03 ? 'weight-down' : ''}`;
+                const nodeClass = `graph-node ${isLive ? 'live' : ''} ${isLiveFresh ? 'live-fresh' : ''} ${isSelected ? 'selected' : ''} ${isTriggerSource ? 'trigger-source' : ''} ${isImpact ? 'impact' : ''} ${weightDelta > 0.03 ? 'weight-up' : ''} ${weightDelta < -0.03 ? 'weight-down' : ''}`;
                 const nodeStrokeWidth = (1.25 + (weight * 0.7)).toFixed(2);
                 const weightLabel = `w:${weight.toFixed(2)}`;
                 return `
@@ -3762,6 +4030,7 @@
                 `;
             }).join('');
             store.graphNodeWeights[prefix] = nextWeights;
+            store.graphLiveState[prefix] = { nodes: nextNodeLive, edges: nextEdgeLive };
 
             const detail = store.nodeDetails;
             const detailMeta = detail?.node?.meta && typeof detail.node.meta === 'object' ? detail.node.meta : {};
@@ -3769,48 +4038,38 @@
             const detailHtml = detail ? `
                 <div class="trace-item">
                     <div><span class="pill">Node</span>${esc(detail.node?.id || '')}</div>
-                    <div><strong>${esc(detail.node?.label || '')}</strong></div>
-                    ${metaSummary.length ? `<div class="small muted">${metaSummary.map((line) => esc(line)).join('<br>')}</div>` : ''}
+                    <div><strong>${privacyHtml(detail.node?.label || '')}</strong></div>
+                    ${metaSummary.length ? `<div class="small muted">${metaSummary.map((line) => privacyHtml(line)).join('<br>')}</div>` : ''}
                     <div class="small"><strong>Inbound:</strong> ${esc((detail.inbound_edges || []).map(e => `${e.source}→${e.target}`).join(' | ') || '—')}</div>
                     <div class="small"><strong>Outbound:</strong> ${esc((detail.outbound_edges || []).map(e => `${e.source}→${e.target}`).join(' | ') || '—')}</div>
-                    ${detail.file_detail ? `<div class="small muted"><strong>File:</strong> ${esc(detail.file_detail.file || '')}<br><strong>Anchors:</strong> ${esc((detail.file_detail.matched_anchors || []).join(' · ') || '—')}</div>` : ''}
+                    ${detail.file_detail ? `<div class="small muted"><strong>File:</strong> ${privacyHtml(detail.file_detail.file || '')}<br><strong>Anchors:</strong> ${privacyHtml((detail.file_detail.matched_anchors || []).join(' · ') || '—')}</div>` : ''}
                 </div>
             ` : '<div class="trace-item">Click a graph node to inspect deeper details (metadata, relations, source file).</div>';
 
-            const legend = [
-                ['root', 'Context roots'],
-                ['reason', 'Why'],
-                ['signal', 'Runtime evidence'],
-                ['decision', 'Decision'],
-                ['action', 'Action'],
-                ['outcome_ok', 'Positive outcome'],
-                ['outcome_bad', 'Negative outcome'],
-            ].map(([group, label]) => `<span class="graph-legend-item"><span class="graph-legend-dot" style="background:${groupColor(group)}"></span>${esc(label)}</span>`).join('');
             const liveCount = nodes.filter((node) => node?.meta?.live).length;
             const avgWeight = nodes.length ? (nodes.reduce((sum, node) => sum + nodeWeight(node), 0) / nodes.length) : 0;
-            const outcomesShown = Number.isFinite(Number(graphMeta.outcomes_shown)) ? Number(graphMeta.outcomes_shown) : null;
-            const outcomesLimit = Number.isFinite(Number(graphMeta.max_outcomes)) ? Number(graphMeta.max_outcomes) : null;
-            const outcomeMetaText = outcomesShown != null && outcomesLimit != null
-                ? ` · outcomes shown: ${outcomesShown}/${outcomesLimit}`
+            const activationsShown = Number.isFinite(Number(graphMeta.activations_shown)) ? Number(graphMeta.activations_shown) : null;
+            const activationsLimit = Number.isFinite(Number(graphMeta.max_activations)) ? Number(graphMeta.max_activations) : null;
+            const activationMetaText = activationsShown != null && activationsLimit != null
+                ? ` · upstream activations: ${activationsShown}/${activationsLimit}`
                 : '';
             const outcomeChoices = [3, 5, 8, 12, 16, 24];
-            const selectedLimit = normalizeOutcomeLimit(store.graphOutcomeLimit, outcomesLimit || store.graphOutcomeLimitDefault);
+            const selectedLimit = normalizeActivationLimit(store.graphActivationLimit, activationsLimit || store.graphActivationLimitDefault);
             const outcomeLimitOptions = outcomeChoices
-                .filter((value) => !outcomesLimit || value <= outcomesLimit || value === selectedLimit)
+                .filter((value) => !activationsLimit || value <= activationsLimit || value === selectedLimit)
                 .map((value) => `<option value="${value}" ${value === selectedLimit ? 'selected' : ''}>${value}</option>`)
                 .join('');
 
             return `
                 <div class="graph-wrap">
                     <div class="graph-summary">
-                        <div><strong>Causal path:</strong> context/reasons → decision → action → outcome</div>
-                        <div class="small muted">Live nodes highlighted: ${esc(String(liveCount))} · average decision weight: ${esc(avgWeight.toFixed(2))}${esc(outcomeMetaText)} · click a node to open contextual drilldown.</div>
-                        <div class="graph-legend">${legend}</div>
+                        <div><strong>Causal path:</strong> upstream activation → context/reasons → decision → action → outcome</div>
+                        <div class="small muted">Live nodes highlighted: ${esc(String(liveCount))} · average decision weight: ${esc(avgWeight.toFixed(2))}${esc(activationMetaText)} · click a node to open contextual drilldown.</div>
                     </div>
                     ${detailHtml}
                     <div class="graph-actions">
-                        <label for="${prefix}-outcome-limit">Outcomes
-                            <select id="${prefix}-outcome-limit" title="Max outcomes shown">${outcomeLimitOptions}</select>
+                        <label for="${prefix}-activation-limit">Activations
+                            <select id="${prefix}-activation-limit" title="Max upstream activations shown">${outcomeLimitOptions}</select>
                         </label>
                         ${expandable ? '<button id="graph-expand-btn" class="graph-expand-btn" title="Expand graph view">Expand</button>' : ''}
                     </div>
@@ -3822,7 +4081,7 @@
                                     <path d="M0,0 L8,4 L0,8 z" fill="#45608f" />
                                 </marker>
                             </defs>
-                            <g id="${layerId}" class="graph-layer-refresh">${edgeSvg}${nodeSvg}</g>
+                            <g id="${layerId}">${edgeSvg}${nodeSvg}</g>
                         </svg>
                     </div>
                 </div>
@@ -4182,6 +4441,16 @@
                 const value = node.getAttribute('data-bc-value') || '';
                 await handleBreadcrumbAction(action, value);
             });
+            const privacyToggle = document.getElementById('privacy-toggle');
+            const savedPrivacy = localStorage.getItem('openclaw.privacy.mode');
+            const privacyOn = savedPrivacy === '1';
+            setPrivacyMode(privacyOn);
+            if (privacyToggle) {
+                privacyToggle.checked = privacyOn;
+                privacyToggle.addEventListener('change', () => {
+                    setPrivacyMode(Boolean(privacyToggle.checked));
+                });
+            }
             await fetchCapabilities();
             await waitForReady(10, 450);
             const socket = io({ transports: ['websocket', 'polling'] });

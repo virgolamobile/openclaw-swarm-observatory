@@ -57,10 +57,15 @@ DOCS_DIR = os.path.join(os.path.dirname(__file__), 'docs')
 OPENCLAW_MODE = os.environ.get('AGENT_DASHBOARD_MODE', 'auto').strip().lower()
 CORE_POLL_INTERVAL_SEC = float(os.environ.get('AGENT_DASHBOARD_CORE_POLL_SEC', '5'))
 try:
-    GRAPH_MAX_OUTCOMES = int(os.environ.get('AGENT_DASHBOARD_GRAPH_MAX_OUTCOMES', '5'))
+    GRAPH_MAX_ACTIVATIONS = int(
+        os.environ.get(
+            'AGENT_DASHBOARD_GRAPH_MAX_ACTIVATIONS',
+            os.environ.get('AGENT_DASHBOARD_GRAPH_MAX_OUTCOMES', '5'),
+        )
+    )
 except Exception:
-    GRAPH_MAX_OUTCOMES = 5
-GRAPH_MAX_OUTCOMES = max(1, min(GRAPH_MAX_OUTCOMES, 24))
+    GRAPH_MAX_ACTIVATIONS = 5
+GRAPH_MAX_ACTIVATIONS = max(1, min(GRAPH_MAX_ACTIVATIONS, 24))
 CORE_CAPABILITIES = {
     'provider': 'openclaw-cli',
     'openclaw_cli': False,
@@ -71,7 +76,7 @@ CORE_CAPABILITIES = {
         'presence': False,
     },
     'graph': {
-        'max_outcomes': GRAPH_MAX_OUTCOMES,
+        'max_activations': GRAPH_MAX_ACTIVATIONS,
     },
     'mode': OPENCLAW_MODE,
 }
@@ -373,7 +378,9 @@ def docs_content(doc_name):
 def drilldown(agent_name):
     """Return full drilldown payload for a specific agent."""
     target = normalize_agent_name(agent_name)
-    max_outcomes = request.args.get('max_outcomes', type=int)
+    max_activations = request.args.get('max_activations', type=int)
+    if max_activations is None:
+        max_activations = request.args.get('max_outcomes', type=int)
     with state_lock:
         snapshot = find_agent_snapshot(target)
         if snapshot is None:
@@ -382,7 +389,7 @@ def drilldown(agent_name):
                 'found': False,
                 'error': 'agent_not_found',
             }, 404
-        depth = compute_drilldown_depth(snapshot, target, max_outcomes=max_outcomes)
+        depth = compute_drilldown_depth(snapshot, target, max_activations=max_activations)
 
     return {
         'agent': snapshot.get('agent', target),
@@ -396,7 +403,9 @@ def drilldown(agent_name):
 def drilldown_node(agent_name, node_id):
     """Return node-level deep details for a selected causal graph node."""
     target = normalize_agent_name(agent_name)
-    max_outcomes = request.args.get('max_outcomes', type=int)
+    max_activations = request.args.get('max_activations', type=int)
+    if max_activations is None:
+        max_activations = request.args.get('max_outcomes', type=int)
     with state_lock:
         snapshot = find_agent_snapshot(target)
         if snapshot is None:
@@ -405,7 +414,7 @@ def drilldown_node(agent_name, node_id):
                 'found': False,
                 'error': 'agent_not_found',
             }, 404
-        depth = compute_drilldown_depth(snapshot, target, max_outcomes=max_outcomes)
+        depth = compute_drilldown_depth(snapshot, target, max_activations=max_activations)
         graph = depth.get('causal_graph', {}) if isinstance(depth, dict) else {}
         nodes = graph.get('nodes', []) if isinstance(graph, dict) else []
         edges = graph.get('edges', []) if isinstance(graph, dict) else []
@@ -451,14 +460,21 @@ def drilldown_node(agent_name, node_id):
     }
 
 
-def compute_drilldown_depth(snapshot, target, max_outcomes=None):
+def compute_drilldown_depth(snapshot, target, max_activations=None):
     """Build all layered drilldown sections for one agent snapshot."""
     timeline = build_agent_timeline(snapshot)
     agent_cron = cron_details_by_agent.get(snapshot.get('agent', ''), [])
     cron_timeline = build_cron_timeline(agent_cron)
     context_roots = load_agent_context_roots(snapshot)
     decisions = infer_decision_trace(target, timeline, context_roots)
-    causal_graph = build_causal_graph(snapshot, decisions, cron_timeline, context_roots, max_outcomes=max_outcomes)
+    causal_graph = build_causal_graph(
+        snapshot,
+        decisions,
+        cron_timeline,
+        context_roots,
+        timeline=timeline,
+        max_activations=max_activations,
+    )
     return {
         'overview': {
             'status': snapshot.get('status', 'unknown'),
@@ -685,13 +701,30 @@ def load_agent_context_roots(snapshot):
 
 def parse_any_ts(value):
     """Parse timestamp-like values into comparable epoch seconds."""
+    def normalize_epoch(raw):
+        try:
+            num = float(raw)
+        except Exception:
+            return 0.0
+        if num <= 0:
+            return 0.0
+        if num > 1e18:
+            num = num / 1e9
+        elif num > 1e15:
+            num = num / 1e6
+        elif num > 1e12:
+            num = num / 1e3
+        return float(num)
+
     if isinstance(value, (int, float)):
-        return float(value)
+        return normalize_epoch(value)
     if not isinstance(value, str):
         return 0.0
     text = value.strip()
     if not text:
         return 0.0
+    if re.fullmatch(r'[-+]?\d+(?:\.\d+)?', text):
+        return normalize_epoch(text)
     try:
         if text.endswith('Z'):
             text = text[:-1] + '+00:00'
@@ -930,7 +963,7 @@ def clip_text(value, max_len=140):
     return text[:max_len - 1] + '…'
 
 
-def build_causal_graph(snapshot, decisions, cron_timeline, context_roots, max_outcomes=None):
+def build_causal_graph(snapshot, decisions, cron_timeline, context_roots, timeline=None, max_activations=None):
     """Build causal graph nodes/edges with explicit cause→effect reasoning paths."""
     nodes = []
     edges = []
@@ -1004,6 +1037,79 @@ def build_causal_graph(snapshot, decisions, cron_timeline, context_roots, max_ou
         })
         root_nodes[file_path] = node_id
 
+    if isinstance(max_activations, int):
+        effective_max_activations = max(1, min(max_activations, 24))
+    else:
+        effective_max_activations = GRAPH_MAX_ACTIVATIONS
+
+    activation_candidates = []
+    for idx, row in enumerate(timeline or []):
+        if not isinstance(row, dict):
+            continue
+        entry_type = str(row.get('type', '')).lower()
+        source = str(row.get('source', '')).lower()
+        text = str(row.get('text', '')).strip()
+        ts_value = parse_any_ts(row.get('ts'))
+        if ts_value <= 0 or not text:
+            continue
+
+        kind = None
+        if 'user_interaction' in entry_type or entry_type.startswith('recent_user'):
+            kind = 'user_request'
+        elif 'assistant_interaction' in entry_type:
+            kind = 'agent_request'
+        elif entry_type.startswith('cron_') or source in {'cron-run', 'cron'}:
+            kind = 'cron_trigger'
+        elif entry_type == 'message' and source in {'session', 'interaction'}:
+            kind = 'conversation'
+
+        if not kind:
+            continue
+
+        activation_candidates.append({
+            'ts': ts_value,
+            'text': text,
+            'kind': kind,
+            'index': idx,
+        })
+
+    activation_candidates.sort(key=lambda item: (-item['ts'], item['index']))
+    dedup = set()
+    activation_nodes = []
+    for item in activation_candidates:
+        key = (item['kind'], item['text'].lower())
+        if key in dedup:
+            continue
+        dedup.add(key)
+        activation_nodes.append(item)
+        if len(activation_nodes) >= effective_max_activations:
+            break
+
+    activation_nodes_by_id = []
+    for idx, item in enumerate(activation_nodes):
+        node_id = f'activation:{idx}'
+        kind = item['kind']
+        if kind == 'user_request':
+            label = f"User asks: {item['text']}"
+        elif kind == 'agent_request':
+            label = f"Agent request: {item['text']}"
+        elif kind == 'cron_trigger':
+            label = f"Cron trigger: {item['text']}"
+        else:
+            label = f"Activation: {item['text']}"
+
+        activation_weight = clamp_weight(0.54 + max(0.0, 0.18 - idx * 0.02))
+        add_node(node_id, label, 'activation', {
+            'ts': item['ts'],
+            'activation_kind': kind,
+            'jump_tab': 'timeline',
+            'weight': activation_weight,
+        })
+        add_edge(node_id, agent_node, 'activates', {
+            'weight': activation_weight,
+        })
+        activation_nodes_by_id.append((node_id, item['ts'], kind))
+
     decision_nodes = []
     for idx, decision in enumerate((decisions or [])[:12]):
         confidence = str(decision.get('confidence', 'medium')).strip().lower()
@@ -1028,6 +1134,19 @@ def build_causal_graph(snapshot, decisions, cron_timeline, context_roots, max_ou
         add_edge(agent_node, node_id, 'decides', {
             'weight': max(0.52, decision_weight - 0.15),
         })
+
+        decision_ts = parse_any_ts(decision.get('ts'))
+        if activation_nodes_by_id:
+            if decision_ts > 0:
+                linked_activations = [entry for entry in activation_nodes_by_id if entry[1] <= decision_ts]
+            else:
+                linked_activations = activation_nodes_by_id
+            for activation_id, _activation_ts, _kind in linked_activations[:2]:
+                activation_weight = clamp_weight((node_by_id.get(activation_id) or {}).get('meta', {}).get('weight', 0.45))
+                add_edge(activation_id, node_id, 'initiates', {
+                    'weight': clamp_weight((activation_weight + decision_weight) / 2),
+                })
+
         if decision_nodes:
             previous_node = node_by_id.get(decision_nodes[-1])
             previous_weight = clamp_weight((previous_node or {}).get('meta', {}).get('weight', 0.45))
@@ -1127,12 +1246,7 @@ def build_causal_graph(snapshot, decisions, cron_timeline, context_roots, max_ou
             decision_id = None
         action_nodes.append((node_id, row, abs_idx, decision_id))
 
-    if isinstance(max_outcomes, int):
-        effective_max_outcomes = max(1, min(max_outcomes, 24))
-    else:
-        effective_max_outcomes = GRAPH_MAX_OUTCOMES
-
-    outcome_source_nodes = action_nodes[-effective_max_outcomes:]
+    outcome_source_nodes = action_nodes
     for action_id, row, abs_idx, decision_id in outcome_source_nodes:
         status = str(row.get('status', 'unknown')).lower()
         outcome_id = f'outcome:{abs_idx}'
@@ -1158,6 +1272,7 @@ def build_causal_graph(snapshot, decisions, cron_timeline, context_roots, max_ou
 
     now_ts = time.time()
     live_tail_sec = 5.0
+    max_live_from_start_sec = 5.0
     snapshot_last_seen_ts = parse_any_ts(snapshot.get('last_seen'))
 
     def set_node_live(node_id, start_ts, activity_duration_sec):
@@ -1166,7 +1281,9 @@ def build_causal_graph(snapshot, decisions, cron_timeline, context_roots, max_ou
         if not isinstance(start_ts, (int, float)) or start_ts <= 0:
             return False
         duration = max(0.0, float(activity_duration_sec or 0.0))
-        expires_at = start_ts + duration + live_tail_sec
+        expires_at = min(start_ts + max_live_from_start_sec, start_ts + duration + live_tail_sec)
+        if expires_at <= start_ts:
+            expires_at = start_ts + 0.25
         if now_ts < start_ts or now_ts > expires_at:
             return False
         node = node_by_id.get(node_id)
@@ -1188,6 +1305,13 @@ def build_causal_graph(snapshot, decisions, cron_timeline, context_roots, max_ou
             return False
         effective_end = max(end_ts, start_ts + float(min_duration_sec))
         return set_node_live(node_id, start_ts, max(0.0, effective_end - start_ts))
+
+    live_activation_nodes = []
+    for activation_id, activation_ts, _kind in activation_nodes_by_id:
+        if activation_ts <= 0:
+            continue
+        if set_node_live_window(activation_id, activation_ts, activation_ts + 0.8, min_duration_sec=0.6):
+            live_activation_nodes.append((activation_id, activation_ts))
 
     decision_ts_by_idx = {}
     for idx, ts in decision_times:
@@ -1271,13 +1395,13 @@ def build_causal_graph(snapshot, decisions, cron_timeline, context_roots, max_ou
         trigger_id = latest_action_id
     elif live_decision_nodes:
         trigger_id, _ = max(live_decision_nodes, key=lambda item: item[1])
+    elif live_activation_nodes:
+        trigger_id, _ = max(live_activation_nodes, key=lambda item: item[1])
 
     if trigger_id is None:
-        status_text = str(snapshot.get('status', '')).strip().lower()
-        active_markers = ('active', 'thinking', 'reason', 'working', 'busy', 'run', 'execut')
-        if any(marker in status_text for marker in active_markers):
-            start_ts = parse_any_ts(snapshot.get('last_seen'))
-            if start_ts > 0 and set_node_live(agent_node, start_ts, min(max(now_ts - start_ts, 2.0), 180.0)):
+        start_ts = parse_any_ts(snapshot.get('last_seen'))
+        if start_ts > 0 and (now_ts - start_ts) <= max_live_from_start_sec:
+            if set_node_live(agent_node, start_ts, 0.8):
                 trigger_id = agent_node
 
     if trigger_id and trigger_id in node_by_id:
@@ -1288,13 +1412,18 @@ def build_causal_graph(snapshot, decisions, cron_timeline, context_roots, max_ou
         source = str(edge.get('source', ''))
         target = str(edge.get('target', ''))
         edge_meta = edge.setdefault('meta', {})
-        edge_meta['live'] = bool(source in live_ids or target in live_ids)
+        source_live = source in live_ids
+        target_live = target in live_ids
+        source_trigger = bool((node_by_id.get(source) or {}).get('meta', {}).get('trigger_source'))
+        edge_meta['live'] = bool((source_live and target_live) or (source_trigger and target_live))
 
     return {
         'nodes': nodes,
         'edges': edges,
         'meta': {
-            'max_outcomes': effective_max_outcomes,
+            'generated_at_ts': now_ts,
+            'max_activations': effective_max_activations,
+            'activations_shown': len(activation_nodes_by_id),
             'outcomes_shown': len(outcome_source_nodes),
         },
     }

@@ -18,6 +18,7 @@ OpenClaw Swarm Observatory is a passive observability layer for OpenClaw systems
 - [Table of contents](#table-of-contents)
 - [Usage flow](#usage-flow)
 - [Core capabilities](#core-capabilities)
+- [Privacy mode](#privacy-mode)
 - [Architecture in one minute](#architecture-in-one-minute)
 - [Quick start](#quick-start)
 - [API snapshot](#api-snapshot)
@@ -40,8 +41,21 @@ Start from the global view, move to a single agent, then inspect one decision no
 - Deep node inspection at `/drilldown/<agent>/node/<nodeId>`
 - Cron timeline with schedule, outcomes, durations, and summaries
 - Dynamic markdown context-root discovery (no brittle hardcoded file names)
+- Privacy mode toggle (👀) with selective masking for PII-like data in cards and graph labels
 
-![OpenClaw Swarm Observatory Preview](screenshot.png)
+## Privacy mode
+
+The header includes a modern `👀 Privacy` toggle that enables selective privacy masking without hiding full text blocks.
+
+When enabled, the dashboard blurs only sensitive fragments such as:
+
+- email addresses
+- Telegram-style usernames and IDs (`@username`, `chat_id`, `telegram_id`, numeric user IDs)
+- user-identifying name fields in context labels (for example `name`, `nome`, `cognome`, `actor`, `from`)
+
+Masking applies across stream cards, agent cards, drilldown card text, and causal graph labels/details. Preference is persisted in browser local storage (`openclaw.privacy.mode`).
+
+![OpenClaw Swarm Observatory - Dashboard Preview](screenshot_1.png)
 
 ## Architecture in one minute
 
@@ -68,6 +82,8 @@ Production-style run:
 ```bash
 gunicorn --preload -k eventlet -w 1 -b 0.0.0.0:5050 app:app
 ```
+
+![OpenClaw Swarm Observatory - Causal Graph Preview](screenshot_2.png)
 
 ## API snapshot
 
