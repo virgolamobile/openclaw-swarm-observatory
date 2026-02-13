@@ -858,6 +858,7 @@
             interactionsSignature: '',
             kpiSignature: '',
             drilldownSignature: '',
+            overviewSignature: '',
         };
 
         // Escape helper for safe HTML interpolation.
@@ -1317,6 +1318,7 @@
             modal.setAttribute('aria-hidden', 'true');
             store.overviewCurrent = null;
             store.overviewSelectedAgent = null;
+            renderState.overviewSignature = '';
         }
 
         function renderOverviewLines(lines) {
@@ -1478,7 +1480,7 @@
 
         function clearOverviewBacklink() {
             store.overviewBacklink = null;
-            renderDrilldown();
+            scheduleRender({ drilldown: true, overview: true, refresh: true });
         }
 
         async function openBacklinkGraphNode() {
@@ -1500,9 +1502,7 @@
                 const agentBtn = event.target.closest('[data-overview-agent]');
                 if (agentBtn) {
                     store.overviewSelectedAgent = agentBtn.getAttribute('data-overview-agent') || null;
-                    const detail = renderOverviewDetail(store.overviewCurrent || 'agents');
-                    document.getElementById('overview-title').textContent = detail.title;
-                    content.innerHTML = detail.html;
+                    scheduleRender({ overview: true, refresh: true });
                     return;
                 }
 
@@ -1517,9 +1517,7 @@
                         console.error('overview drilldown error', error);
                         store.overviewDeepByAgent[agent] = { found: false };
                     }
-                    const detail = renderOverviewDetail(store.overviewCurrent || 'agents');
-                    document.getElementById('overview-title').textContent = detail.title;
-                    content.innerHTML = detail.html;
+                    scheduleRender({ overview: true, refresh: true });
                 }
 
                 const graphBtn = event.target.closest('[data-overview-open-graph]');
@@ -1598,15 +1596,12 @@
 
         function openOverviewModal(metricKey) {
             const modal = document.getElementById('overview-modal');
-            const title = document.getElementById('overview-title');
-            const content = document.getElementById('overview-content');
             bindOverviewModalInteractions();
-            const detail = renderOverviewDetail(metricKey);
             store.overviewCurrent = metricKey;
-            title.textContent = detail.title;
-            content.innerHTML = detail.html;
             modal.classList.add('open');
             modal.setAttribute('aria-hidden', 'false');
+            renderState.overviewSignature = '';
+            scheduleRender({ overview: true, refresh: true });
         }
 
         async function openDocsModal(targetDoc = null, targetAnchor = null) {
@@ -1676,37 +1671,82 @@
         }
         window.openDrilldown = openDrilldown;
 
-        function renderAgentCard(item) {
+        function renderAgentCardBody(item) {
             const missions = Array.isArray(item.active_missions) && item.active_missions.length ? item.active_missions.join(', ') : '—';
             const interrupted = Array.isArray(item.interrupted_tasks) ? item.interrupted_tasks.length : 0;
-            const selectedClass = String(store.selectedAgent || '') === String(item.agent || '') ? 'selected' : '';
             const key = safeDomKey(item.agent);
             const tokVal = parseTokenCount(item);
             return `
-                <article class="agent-card ${selectedClass}" data-agent-key="${esc(key)}" onclick="openDrilldown('${esc(item.agent)}')">
-                    <div class="agent-main">
-                        <div class="agent-top">
-                            ${agentBadge(item.agent)}
-                        </div>
-                        <div class="kv"><span class="muted">Status:</span> <span class="${statusClass(item.status)}">${esc(item.status || 'unknown')}</span></div>
-                        <div class="kv"><span class="muted">Task:</span> ${esc(item.task || '—')}</div>
-                        <div class="kv"><span class="muted">Cron:</span> ${esc(item.cron_jobs ?? 0)} ${interrupted ? `<span class="chip bad">${interrupted} non-ok</span>` : ''}</div>
-                        <div class="kv"><span class="muted">Missions:</span> ${esc(missions)}</div>
-                        <div class="kv"><span class="muted">Last event:</span> ${esc(item.last_seen || '—')}</div>
+                <div class="agent-main">
+                    <div class="agent-top">
+                        ${agentBadge(item.agent)}
                     </div>
-                    <div class="agent-side">
-                        <span class="chip live">● live</span>
-                        <div class="token-mini-widget">
-                            <div class="token-mini-head">
-                                <span class="token-mini-label">Tok</span>
-                                <button class="help-btn micro" data-doc="03-ui-ux-guide.md" data-doc-anchor="03-ui-ux-guide.md-token-mini-chart-openclaw" title="How token metric works in OpenClaw">?</button>
-                            </div>
-                            <canvas class="token-mini-canvas" id="mini-tok-${esc(key)}" width="92" height="64"></canvas>
-                            <div class="token-mini-value">${formatTokenCompact(tokVal)}</div>
+                    <div class="kv"><span class="muted">Status:</span> <span class="${statusClass(item.status)}">${esc(item.status || 'unknown')}</span></div>
+                    <div class="kv"><span class="muted">Task:</span> ${esc(item.task || '—')}</div>
+                    <div class="kv"><span class="muted">Cron:</span> ${esc(item.cron_jobs ?? 0)} ${interrupted ? `<span class="chip bad">${interrupted} non-ok</span>` : ''}</div>
+                    <div class="kv"><span class="muted">Missions:</span> ${esc(missions)}</div>
+                    <div class="kv"><span class="muted">Last event:</span> ${esc(item.last_seen || '—')}</div>
+                </div>
+                <div class="agent-side">
+                    <span class="chip live">● live</span>
+                    <div class="token-mini-widget">
+                        <div class="token-mini-head">
+                            <span class="token-mini-label">Tok</span>
+                            <button class="help-btn micro" data-doc="03-ui-ux-guide.md" data-doc-anchor="03-ui-ux-guide.md-token-mini-chart-openclaw" title="How token metric works in OpenClaw">?</button>
                         </div>
+                        <canvas class="token-mini-canvas" id="mini-tok-${esc(key)}" width="92" height="64"></canvas>
+                        <div class="token-mini-value">${formatTokenCompact(tokVal)}</div>
                     </div>
-                </article>
+                </div>
             `;
+        }
+
+        class OpenClawAgentCard extends HTMLElement {
+            constructor() {
+                super();
+                this._item = null;
+                this._selected = false;
+                this._bound = false;
+            }
+
+            connectedCallback() {
+                if (!this._bound) {
+                    this.addEventListener('click', (event) => {
+                        const docBtn = event.target.closest('[data-doc]');
+                        if (docBtn) {
+                            event.stopPropagation();
+                            openDocsModal(docBtn.dataset.doc || 'INDEX.md', docBtn.dataset.docAnchor || null);
+                            return;
+                        }
+                        const agent = this._item?.agent || this.getAttribute('data-agent-name') || '';
+                        if (agent) openDrilldown(agent);
+                    });
+                    this._bound = true;
+                }
+                this.render();
+            }
+
+            set item(value) {
+                this._item = value || null;
+                this.render();
+            }
+
+            set selected(value) {
+                this._selected = Boolean(value);
+                this.render();
+            }
+
+            render() {
+                if (!this._item) return;
+                this.className = `agent-card ${this._selected ? 'selected' : ''}`;
+                this.setAttribute('data-agent-key', safeDomKey(this._item.agent));
+                this.setAttribute('data-agent-name', String(this._item.agent || ''));
+                this.innerHTML = renderAgentCardBody(this._item);
+            }
+        }
+
+        if (!customElements.get('openclaw-agent-card')) {
+            customElements.define('openclaw-agent-card', OpenClawAgentCard);
         }
 
         function rowSignature(item) {
@@ -1744,7 +1784,7 @@
             }
 
             const existing = new Map();
-            grid.querySelectorAll('.agent-card[data-agent-key]').forEach((node) => {
+            grid.querySelectorAll('openclaw-agent-card[data-agent-key]').forEach((node) => {
                 existing.set(String(node.getAttribute('data-agent-key') || ''), node);
             });
 
@@ -1755,10 +1795,15 @@
                 const signature = rowSignature(item);
                 const prevSignature = renderState.agentSignatures.get(key);
                 let node = existing.get(key);
+                const selected = String(store.selectedAgent || '') === String(item.agent || '');
 
                 if (!node || signature !== prevSignature) {
-                    node = htmlToElement(renderAgentCard(item));
+                    if (!node) node = document.createElement('openclaw-agent-card');
+                    node.item = item;
+                    node.selected = selected;
                     renderState.agentSignatures.set(key, signature);
+                } else if (node.selected !== selected) {
+                    node.selected = selected;
                 }
                 if (node) fragment.appendChild(node);
                 nextKeys.add(key);
@@ -2136,7 +2181,7 @@
                 const response = await fetch(`/drilldown/${encodeURIComponent(store.selectedAgent)}/node/${encodeURIComponent(nodeId)}`);
                 if (!response.ok) return;
                 store.nodeDetails = await response.json();
-                renderDrilldown();
+                scheduleRender({ drilldown: true, refresh: true });
             } catch (error) {
                 console.error('node details error', error);
             }
@@ -2254,8 +2299,17 @@
                 const modal = document.getElementById('overview-modal');
                 if (modal && modal.classList.contains('open')) {
                     const detail = renderOverviewDetail(store.overviewCurrent);
-                    document.getElementById('overview-title').textContent = detail.title;
-                    document.getElementById('overview-content').innerHTML = detail.html;
+                    const signature = [
+                        store.overviewCurrent,
+                        store.overviewSelectedAgent || '',
+                        detail.title,
+                        detail.html.length,
+                    ].join('|');
+                    if (signature !== renderState.overviewSignature) {
+                        renderState.overviewSignature = signature;
+                        document.getElementById('overview-title').textContent = detail.title;
+                        document.getElementById('overview-content').innerHTML = detail.html;
+                    }
                 }
             }
             if (dirty.refresh) {
