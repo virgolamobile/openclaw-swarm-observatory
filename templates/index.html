@@ -216,6 +216,7 @@
             border: 1px solid var(--border);
             border-radius: 10px;
             padding: 10px;
+            position: relative;
             display: grid;
             grid-template-columns: minmax(0, 1fr) 94px;
             column-gap: 10px;
@@ -237,7 +238,26 @@
             align-self: flex-end;
         }
         .agent-card:hover { transform: translateY(-1px); border-color: #4b6192; }
-        .agent-card.selected { border-color: #5b8cff; box-shadow: inset 0 0 0 1px rgba(91,140,255,.35); }
+        .agent-card.selected {
+            border-color: #8fb3ff;
+            background: linear-gradient(180deg, rgba(34, 55, 102, .55), rgba(23, 36, 67, .72));
+            transform: translateY(-1px);
+            box-shadow:
+                inset 0 0 0 1px rgba(143,179,255,.62),
+                0 0 0 2px rgba(143,179,255,.22),
+                0 10px 22px rgba(5, 12, 28, .46);
+        }
+        .agent-card.selected::before {
+            content: '';
+            position: absolute;
+            left: -1px;
+            top: 8px;
+            bottom: 8px;
+            width: 4px;
+            border-radius: 999px;
+            background: #8fb3ff;
+            box-shadow: 0 0 12px rgba(143,179,255,.65);
+        }
         .agent-card.loading {
             border-color: #7aa3ff;
             box-shadow: inset 0 0 0 1px rgba(122,163,255,.48), 0 0 0 2px rgba(122,163,255,.12);
@@ -339,6 +359,9 @@
             margin-bottom: 10px;
             font-size: .84rem;
             background: rgba(21,31,56,.5);
+        }
+        .selection-hint.hidden {
+            display: none;
         }
 
         .telemetry-check {
@@ -2193,9 +2216,11 @@
             setKpiValue('agents', rows.length);
             const hint = document.getElementById('selection-hint');
             if (!store.selectedAgent) {
+                hint.classList.remove('hidden');
                 hint.textContent = '1) Select an agent to unlock deep investigation and causal graph analysis.';
             } else {
-                hint.innerHTML = `Selected agent: ${agentBadge(store.selectedAgent, true)}. You can switch agent at any time.`;
+                hint.textContent = '';
+                hint.classList.add('hidden');
             }
         }
 
