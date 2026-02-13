@@ -1,14 +1,14 @@
-# OpenClaw Agent Dashboard
+# OpenClaw Swarm Observatory
 
 [![Tests](https://github.com/virgolamobile/openclaw-swarm-observatory/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/virgolamobile/openclaw-swarm-observatory/actions/workflows/tests.yml)
 
 This project is a real-time dashboard for observing OpenClaw agent swarms. It supports inspection of current state, decision causes, and document-level provenance.
 
-![OpenClaw Observatory Dashboard](screenshot.png)
+![OpenClaw Swarm Observatory](screenshot.png)
 
 ## What this is
 
-OpenClaw Agent Dashboard is a passive observability layer for OpenClaw systems. It aggregates telemetry, timelines, and documentation context so behavior can be inspected without changing agent logic.
+OpenClaw Swarm Observatory is a passive observability layer for OpenClaw systems. It aggregates telemetry, timelines, and documentation context so behavior can be inspected without changing agent logic.
 
 ## Usage flow
 
