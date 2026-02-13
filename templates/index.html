@@ -624,6 +624,82 @@
         .status-bad { color: var(--bad); }
         .status-warn { color: var(--warn); }
         .small { font-size: .75rem; }
+        .trace-expand {
+            border: 1px solid rgba(255,255,255,.1);
+            border-radius: 8px;
+            background: rgba(12, 20, 38, .55);
+            margin-top: 6px;
+            padding: 6px 8px;
+        }
+        .trace-expand summary {
+            cursor: pointer;
+            color: #dce7ff;
+            font-size: .76rem;
+            line-height: 1.35;
+        }
+        .trace-expand summary::marker {
+            color: #9fb8f6;
+        }
+        .trace-expand[open] summary {
+            margin-bottom: 6px;
+        }
+        .trace-list {
+            margin: 0;
+            padding-left: 18px;
+            color: #c9d7f8;
+            font-size: .74rem;
+            line-height: 1.35;
+        }
+        .trace-list li {
+            margin: 2px 0;
+            word-break: break-word;
+        }
+        .reasoning-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 7px;
+            margin-top: 7px;
+        }
+        .reason-block {
+            border: 1px solid rgba(255,255,255,.11);
+            border-radius: 8px;
+            background: rgba(14, 24, 45, .7);
+            padding: 7px 8px;
+            min-width: 0;
+        }
+        .reason-block-title {
+            font-size: .68rem;
+            text-transform: uppercase;
+            letter-spacing: .4px;
+            color: #9db2df;
+            margin-bottom: 4px;
+        }
+        .reason-block-body {
+            font-size: .75rem;
+            color: #d9e5ff;
+            line-height: 1.35;
+            word-break: break-word;
+        }
+        .reason-block-list {
+            margin: 0;
+            padding-left: 16px;
+            color: #d9e5ff;
+            font-size: .74rem;
+            line-height: 1.3;
+        }
+        .reason-block-list li { margin: 2px 0; }
+        .reason-tag {
+            display: inline-flex;
+            align-items: center;
+            border: 1px solid rgba(91,140,255,.45);
+            background: rgba(91,140,255,.16);
+            color: #dce8ff;
+            border-radius: 999px;
+            font-size: .68rem;
+            padding: 1px 7px;
+            margin-left: 6px;
+            vertical-align: middle;
+        }
         .investigation-breadcrumb {
             border: 1px dashed rgba(255,255,255,.2);
             border-radius: 8px;
@@ -1181,6 +1257,187 @@
 
         function safeDomKey(value) {
             return String(value || 'unknown').toLowerCase().replace(/[^a-z0-9_-]+/g, '-');
+        }
+
+        function normalizeTextList(value) {
+            if (!Array.isArray(value)) return [];
+            return value
+                .map((item) => String(item ?? '').replace(/\s+/g, ' ').trim())
+                .filter(Boolean);
+        }
+
+        function shortText(value, maxChars = 140) {
+            const text = String(value ?? '').replace(/\s+/g, ' ').trim();
+            if (!text) return '—';
+            if (text.length <= maxChars) return text;
+            return `${text.slice(0, maxChars - 1)}…`;
+        }
+
+        function renderCollapsibleTraceList(label, rawItems, options = {}) {
+            const items = normalizeTextList(rawItems);
+            if (!items.length) {
+                return `<div class="small muted"><strong>${esc(label)}:</strong> —</div>`;
+            }
+
+            const previewLimit = Number.isFinite(Number(options.previewLimit)) ? Number(options.previewLimit) : 2;
+            const preview = items.slice(0, Math.max(1, previewLimit)).map((item) => shortText(item, 120)).join(' · ');
+            const previewTail = items.length > previewLimit ? ` · +${items.length - previewLimit} more` : '';
+            const openAttr = options.open ? ' open' : '';
+
+            return `
+                <details class="trace-expand"${openAttr}>
+                    <summary><strong>${esc(label)}:</strong> ${esc(preview + previewTail)}</summary>
+                    <ul class="trace-list">
+                        ${items.map((item) => `<li>${esc(item)}</li>`).join('')}
+                    </ul>
+                </details>
+            `;
+        }
+
+        function formatRootCauseItems(rootCauses) {
+            if (!Array.isArray(rootCauses)) return [];
+            return rootCauses
+                .map((entry) => {
+                    if (!entry || typeof entry !== 'object') return '';
+                    const file = String(entry.file || '').trim();
+                    const anchors = Array.isArray(entry.anchors)
+                        ? entry.anchors.map((item) => String(item || '').trim()).filter(Boolean)
+                        : [];
+                    if (!file && !anchors.length) return '';
+                    if (!anchors.length) return file || '';
+                    return `${file}: ${anchors.join(', ')}`;
+                })
+                .filter(Boolean);
+        }
+
+        function basenameFromPath(path) {
+            const text = String(path || '').trim();
+            if (!text) return '';
+            const parts = text.split('/').filter(Boolean);
+            return parts.length ? parts[parts.length - 1] : text;
+        }
+
+        function splitEvidenceClauses(items, maxItems = 8) {
+            const out = [];
+            for (const item of normalizeTextList(items)) {
+                const clauses = item
+                    .split(/\s+[·|]\s+|;\s+|\.\s+(?=[A-ZÀ-Ý])/)
+                    .map((x) => x.trim())
+                    .filter(Boolean);
+                if (!clauses.length) {
+                    out.push(item);
+                } else {
+                    out.push(...clauses);
+                }
+                if (out.length >= maxItems) break;
+            }
+            return out.slice(0, maxItems);
+        }
+
+        function extractReasoningChunks(row) {
+            const rawDecision = String(row?.decision || '').replace(/\s+/g, ' ').trim();
+            let speaker = '';
+            let decisionText = rawDecision;
+
+            const speakerMatch = decisionText.match(/^([a-z_][a-z0-9_-]{1,24})\s*:\s*/i);
+            if (speakerMatch) {
+                speaker = speakerMatch[1];
+                decisionText = decisionText.slice(speakerMatch[0].length).trim();
+            }
+
+            let decisionTag = '';
+            const tagMatch = decisionText.match(/\b([A-Z][A-Z0-9_]{2,})$/);
+            if (tagMatch) {
+                decisionTag = tagMatch[1];
+                decisionText = decisionText.slice(0, decisionText.length - decisionTag.length).trim();
+            }
+
+            const decisionParts = decisionText.split(/\s+-\s+/).map((x) => x.trim()).filter(Boolean);
+            const outcome = decisionParts[0] || decisionText || '—';
+            const signals = decisionParts.slice(1);
+
+            const whyItems = normalizeTextList(row?.why || []);
+            const trigger = whyItems.filter((x) => /trigger|cron|schedule|heartbeat|broadcast|request|esecuzione/i.test(x));
+            const constraints = whyItems.filter((x) => /constraint|goal|objective|policy|limit|soul|operations|workspace document/i.test(x));
+            const context = whyItems.filter((x) => !trigger.includes(x) && !constraints.includes(x));
+
+            const evidence = splitEvidenceClauses(row?.evidence || [], 8);
+
+            const sourceFiles = (Array.isArray(row?.root_causes) ? row.root_causes : [])
+                .map((entry) => {
+                    if (!entry || typeof entry !== 'object') return '';
+                    const file = String(entry.file || '').trim();
+                    const fileName = basenameFromPath(file);
+                    const anchors = Array.isArray(entry.anchors)
+                        ? entry.anchors.map((x) => String(x || '').trim()).filter(Boolean)
+                        : [];
+                    if (!fileName && !anchors.length) return '';
+                    if (!anchors.length) return fileName || '';
+                    const anchorPreview = anchors.slice(0, 3).join(', ');
+                    const extra = anchors.length > 3 ? ` (+${anchors.length - 3})` : '';
+                    return `${fileName}: ${anchorPreview}${extra}`;
+                })
+                .filter(Boolean)
+                .slice(0, 8);
+
+            return {
+                speaker,
+                decisionTag,
+                outcome,
+                signals,
+                trigger,
+                constraints,
+                context,
+                evidence,
+                sourceFiles,
+            };
+        }
+
+        function renderReasonBlock(title, value) {
+            if (Array.isArray(value)) {
+                if (!value.length) return '';
+                return `
+                    <section class="reason-block">
+                        <div class="reason-block-title">${esc(title)}</div>
+                        <ul class="reason-block-list">${value.map((item) => `<li>${esc(item)}</li>`).join('')}</ul>
+                    </section>
+                `;
+            }
+
+            const text = String(value || '').trim();
+            if (!text) return '';
+            return `
+                <section class="reason-block">
+                    <div class="reason-block-title">${esc(title)}</div>
+                    <div class="reason-block-body">${esc(text)}</div>
+                </section>
+            `;
+        }
+
+        function renderHumanReasoning(row) {
+            const chunks = extractReasoningChunks(row || {});
+            const outcomeTitle = chunks.decisionTag
+                ? `Outcome <span class="reason-tag">${esc(chunks.decisionTag)}</span>`
+                : 'Outcome';
+
+            const outcomeHtml = `
+                <section class="reason-block">
+                    <div class="reason-block-title">${outcomeTitle}</div>
+                    <div class="reason-block-body">${esc(chunks.outcome)}</div>
+                </section>
+            `;
+
+            const blocks = [
+                chunks.speaker ? renderReasonBlock('Speaker', chunks.speaker) : '',
+                renderReasonBlock('Operational signals', chunks.signals),
+                renderReasonBlock('Trigger', chunks.trigger),
+                renderReasonBlock('Constraints & goals', chunks.constraints),
+                renderReasonBlock('Context', chunks.context),
+                renderReasonBlock('Evidence trail', chunks.evidence),
+                renderReasonBlock('Source files', chunks.sourceFiles),
+            ].filter(Boolean);
+
+            return `<div class="reasoning-grid">${outcomeHtml}${blocks.join('')}</div>`;
         }
 
         function parseTokenCount(item) {
@@ -2543,13 +2800,18 @@
             ` : '';
             body.innerHTML = rows.length ? `${banner}${rows.map((row, idx) => {
                 const linked = showBacklink && Number(backlink.decisionIndex) === idx ? 'linked' : '';
+                const whyBlock = renderCollapsibleTraceList('Why', row.why || [], { previewLimit: 2, open: linked });
+                const evidenceBlock = renderCollapsibleTraceList('Runtime evidence', row.evidence || [], { previewLimit: 2 });
+                const rootCauseBlock = renderCollapsibleTraceList('Root causes (SOUL/files)', formatRootCauseItems(row.root_causes), { previewLimit: 1 });
+                const reasoningBlock = renderHumanReasoning(row);
                 return `
                 <div class="trace-item ${linked}">
                     <div><span class="pill">confidence ${esc(row.confidence || 'n/a')}</span><span class="pill">${esc(row.source || '')}</span></div>
                     <div><strong>Decision:</strong> ${esc(row.decision || '')}</div>
-                    <div class="small"><strong>Why:</strong> ${esc((row.why || []).join(' · ') || '—')}</div>
-                    <div class="small muted"><strong>Runtime evidence:</strong> ${esc((row.evidence || []).join(' | ') || '—')}</div>
-                    <div class="small muted"><strong>Root causes (SOUL/files):</strong> ${esc((row.root_causes || []).map((x) => `${x.file}: ${(x.anchors || []).join(', ')}`).join(' | ') || '—')}</div>
+                    ${reasoningBlock}
+                    ${whyBlock}
+                    ${evidenceBlock}
+                    ${rootCauseBlock}
                     <div class="when">${esc(row.ts || '')}</div>
                 </div>
                 `;
