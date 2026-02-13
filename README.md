@@ -2,19 +2,17 @@
 
 [![Tests](https://github.com/virgolamobile/openclaw-swarm-observatory/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/virgolamobile/openclaw-swarm-observatory/actions/workflows/tests.yml)
 
-When a multi-agent swarm starts making decisions at speed, logs alone become a detective novel written by four unreliable narrators. I built this dashboard to turn that chaos into something you can actually reason about: what happened, why it happened, what influenced it, and what to inspect next.
+This project is a real-time dashboard for observing OpenClaw agent swarms. It helps answer three practical questions: what is happening now, why it happened, and where that decision came from.
 
 ![OpenClaw Observatory Dashboard](screenshot.png)
 
-## What this is (and why it exists)
+## What this is
 
-OpenClaw Agent Dashboard is a real-time observability surface for OpenClaw systems. It is designed to stay passive and explain behavior, not alter it: it listens, correlates, and presents evidence from telemetry, timelines, and document provenance.
+OpenClaw Agent Dashboard is a passive observability layer for OpenClaw systems. It aggregates telemetry, timelines, and documentation context so behavior can be inspected without changing agent logic.
 
-The goal is simple: move from “something feels off” to “here is the exact causal chain” without spending half your day grepping logs.
+## Why it is useful
 
-## Why it feels useful in practice
-
-You start from a global view, zoom into one agent, then drill into a single node decision with provenance and constraints attached. Instead of bouncing between terminals and markdown files, you follow one coherent thread from signal to explanation. If your swarm behaves like an over-caffeinated jazz quartet, this gives you the score.
+You can start from a global view, move to a single agent, and then inspect one decision node with its constraints and provenance. This reduces the amount of context-switching between logs, terminals, and markdown notes during debugging.
 
 ## Core capabilities
 
@@ -75,17 +73,15 @@ gunicorn --preload -k eventlet -w 1 -b 0.0.0.0:5050 app:app
 
 ## Documentation
 
-Project documentation is split in a practical way:
-
-- `README.md` for orientation, setup, and quick usage
+- `README.md` for setup and quick orientation
 - `docs/` for versioned technical documentation
-- GitHub Wiki for operational notes, walkthroughs, and playbooks that evolve over time
+- GitHub Wiki for operational playbooks and walkthroughs
 
 ## Author
 
 - Niccolò Zamborlini
 - encom.io
-- Project: https://github.com/virgolamobile/openclaw-swarm-observatory/tree/main
+- Project: https://github.com/virgolamobile/openclaw-swarm-observatory
 
 ## Community and licensing
 
