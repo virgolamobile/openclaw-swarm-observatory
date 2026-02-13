@@ -718,6 +718,21 @@
         }
         .overview-lines li { margin-bottom: 5px; }
 
+        .content-updated {
+            animation: contentFadeIn .22s ease-out;
+        }
+
+        @keyframes contentFadeIn {
+            from {
+                opacity: .42;
+                transform: translateY(2px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
         @media (max-width: 1380px) {
             .layout { grid-template-columns: 1fr; }
             .investigation { position: static; }
@@ -871,6 +886,13 @@
             return s.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
         }
 
+        function markContentUpdate(node) {
+            if (!node) return;
+            node.classList.remove('content-updated');
+            void node.offsetWidth;
+            node.classList.add('content-updated');
+        }
+
         function agentColor(name) {
             const key = String(name || '').trim().toLowerCase();
             if (!key) return 'hsl(220 74% 62%)';
@@ -1006,6 +1028,7 @@
                 this._value = next;
                 const valueNode = this.querySelector('.value');
                 if (valueNode) valueNode.textContent = next;
+                markContentUpdate(this);
             }
 
             render() {
@@ -1055,6 +1078,7 @@
                             <div class="when">${esc(it.ts || '')}</div>
                         </div>
                     `).join('');
+                    markContentUpdate(this);
                     return;
                 }
 
@@ -1065,6 +1089,7 @@
                         <div class="when">${esc(it.ts || '')}</div>
                     </div>
                 `).join('');
+                markContentUpdate(this);
             }
         }
 
@@ -1904,6 +1929,7 @@
                 this.setAttribute('data-agent-key', safeDomKey(this._item.agent));
                 this.setAttribute('data-agent-name', String(this._item.agent || ''));
                 this.innerHTML = renderAgentCardBody(this._item);
+                markContentUpdate(this);
             }
         }
 
