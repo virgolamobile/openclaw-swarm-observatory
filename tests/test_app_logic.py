@@ -583,7 +583,7 @@ def test_index_docs_and_drilldown_error_paths(monkeypatch, tmp_path):
     missing_node = client.get("/drilldown/Europa/node/none")
     assert missing_node.status_code == 404
 
-    def fake_depth(_snapshot, _target):
+    def fake_depth(_snapshot, _target, **_kwargs):
         return {
             "causal_graph": {
                 "nodes": [{"id": "n1", "label": "Node", "meta": {"file": "/tmp/SOUL.md"}}],
