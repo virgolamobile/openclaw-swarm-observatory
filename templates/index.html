@@ -738,11 +738,11 @@
             </div>
         </div>
         <div class="overview">
-            <div class="kpi" data-overview="agents" role="button" tabindex="0"><div class="label">Observed agents <button class="help-btn micro" data-doc="03-ui-ux-guide.md" data-doc-anchor="03-ui-ux-guide.md-header-and-kpi-strip" title="Meaning of this KPI">?</button></div><div class="value" id="kpi-agents">0</div></div>
-            <div class="kpi" data-overview="cron" role="button" tabindex="0"><div class="label">Active cron jobs <button class="help-btn micro" data-doc="03-ui-ux-guide.md" data-doc-anchor="03-ui-ux-guide.md-cron-timeline-tab" title="Meaning of this KPI">?</button></div><div class="value" id="kpi-cron">0</div></div>
-            <div class="kpi" data-overview="user_agent" role="button" tabindex="0"><div class="label">User→agent interactions <button class="help-btn micro" data-doc="03-ui-ux-guide.md" data-doc-anchor="03-ui-ux-guide.md-user-to-agent-stream" title="Meaning of this KPI">?</button></div><div class="value" id="kpi-ua">0</div></div>
-            <div class="kpi" data-overview="agent_agent" role="button" tabindex="0"><div class="label">Agent→agent interactions <button class="help-btn micro" data-doc="03-ui-ux-guide.md" data-doc-anchor="03-ui-ux-guide.md-agent-to-agent-stream" title="Meaning of this KPI">?</button></div><div class="value" id="kpi-aa">0</div></div>
-            <div class="kpi" data-overview="interrupted" role="button" tabindex="0"><div class="label">Non-ok/interrupted tasks <button class="help-btn micro" data-doc="03-ui-ux-guide.md" data-doc-anchor="03-ui-ux-guide.md-strategic-usage-patterns" title="Meaning of this KPI">?</button></div><div class="value" id="kpi-bad">0</div></div>
+            <openclaw-kpi-card class="kpi" data-overview="agents" data-kpi-key="agents" data-label="Observed agents" data-doc="03-ui-ux-guide.md" data-doc-anchor="03-ui-ux-guide.md-header-and-kpi-strip"></openclaw-kpi-card>
+            <openclaw-kpi-card class="kpi" data-overview="cron" data-kpi-key="cron" data-label="Active cron jobs" data-doc="03-ui-ux-guide.md" data-doc-anchor="03-ui-ux-guide.md-cron-timeline-tab"></openclaw-kpi-card>
+            <openclaw-kpi-card class="kpi" data-overview="user_agent" data-kpi-key="ua" data-label="User→agent interactions" data-doc="03-ui-ux-guide.md" data-doc-anchor="03-ui-ux-guide.md-user-to-agent-stream"></openclaw-kpi-card>
+            <openclaw-kpi-card class="kpi" data-overview="agent_agent" data-kpi-key="aa" data-label="Agent→agent interactions" data-doc="03-ui-ux-guide.md" data-doc-anchor="03-ui-ux-guide.md-agent-to-agent-stream"></openclaw-kpi-card>
+            <openclaw-kpi-card class="kpi" data-overview="interrupted" data-kpi-key="bad" data-label="Non-ok/interrupted tasks" data-doc="03-ui-ux-guide.md" data-doc-anchor="03-ui-ux-guide.md-strategic-usage-patterns"></openclaw-kpi-card>
         </div>
     </header>
 
@@ -765,13 +765,13 @@
                         <h3 class="title-with-help">User ↔ Agent
                             <button class="help-btn micro" data-doc="03-ui-ux-guide.md" data-doc-anchor="03-ui-ux-guide.md-user-to-agent-stream" title="Open stream guide">?</button>
                         </h3>
-                        <div id="user-agent-list" class="list"></div>
+                        <openclaw-stream-list id="user-agent-list" class="list" data-mode="ua"></openclaw-stream-list>
                     </div>
                     <div>
                         <h3 class="title-with-help">Agent ↔ Agent
                             <button class="help-btn micro" data-doc="03-ui-ux-guide.md" data-doc-anchor="03-ui-ux-guide.md-agent-to-agent-stream" title="Open stream guide">?</button>
                         </h3>
-                        <div id="agent-agent-list" class="list"></div>
+                        <openclaw-stream-list id="agent-agent-list" class="list" data-mode="aa"></openclaw-stream-list>
                     </div>
                 </div>
             </article>
@@ -843,6 +843,9 @@
             overviewDeepByAgent: {},
             overviewBacklink: null,
             agentTelemetryHistory: {},
+            refreshInFlight: false,
+            refreshQueued: false,
+            drilldownRequestSeq: 0,
         };
 
         const renderState = {
@@ -967,6 +970,109 @@
                 return { className: 'warn', label: 'delayed', bucket: 'delayed', title: `Heartbeat ${ageSec}s ago` };
             }
             return { className: 'bad', label: 'stale', bucket: 'stale', title: `Heartbeat ${ageSec}s ago` };
+        }
+
+        function setKpiValue(key, value) {
+            const node = document.querySelector(`openclaw-kpi-card[data-kpi-key="${key}"]`);
+            if (!node || typeof node.setValue !== 'function') return;
+            node.setValue(value);
+        }
+
+        class OpenClawKpiCard extends HTMLElement {
+            constructor() {
+                super();
+                this._value = '0';
+                this._bound = false;
+            }
+
+            connectedCallback() {
+                if (!this._bound) {
+                    this.setAttribute('role', 'button');
+                    this.setAttribute('tabindex', '0');
+                    this.addEventListener('click', (event) => {
+                        const helpBtn = event.target.closest('[data-doc]');
+                        if (!helpBtn) return;
+                        event.stopPropagation();
+                        openDocsModal(helpBtn.dataset.doc || 'INDEX.md', helpBtn.dataset.docAnchor || null);
+                    });
+                    this._bound = true;
+                }
+                this.render();
+            }
+
+            setValue(value) {
+                const next = String(value ?? 0);
+                if (next === this._value) return;
+                this._value = next;
+                const valueNode = this.querySelector('.value');
+                if (valueNode) valueNode.textContent = next;
+            }
+
+            render() {
+                const label = this.getAttribute('data-label') || 'Metric';
+                const doc = this.getAttribute('data-doc') || 'INDEX.md';
+                const anchor = this.getAttribute('data-doc-anchor') || '';
+                this.innerHTML = `<div class="label">${esc(label)} <button class="help-btn micro" data-doc="${esc(doc)}" data-doc-anchor="${esc(anchor)}" title="Meaning of this KPI">?</button></div><div class="value">${esc(this._value)}</div>`;
+            }
+        }
+
+        class OpenClawStreamList extends HTMLElement {
+            constructor() {
+                super();
+                this._rows = [];
+                this._signature = '';
+            }
+
+            setRows(rows) {
+                const normalized = Array.isArray(rows) ? rows : [];
+                const first = normalized[0] || {};
+                const last = normalized[normalized.length - 1] || {};
+                const signature = [
+                    normalized.length,
+                    first.id || first.ts || first.text || '',
+                    last.id || last.ts || last.text || '',
+                ].join('|');
+                if (signature === this._signature) return;
+                this._signature = signature;
+                this._rows = normalized;
+                this.render();
+            }
+
+            render() {
+                const mode = this.getAttribute('data-mode') || 'ua';
+                if (!this._rows.length) {
+                    this.innerHTML = mode === 'ua'
+                        ? '<div class="row">No user/agent interactions detected.</div>'
+                        : '<div class="row">No agent/agent interactions detected.</div>';
+                    return;
+                }
+
+                if (mode === 'aa') {
+                    this.innerHTML = this._rows.map((it) => `
+                        <div class="row">
+                            <div>${agentBadge(it.source, true)} → ${agentBadge(it.target, true)}</div>
+                            <div>${esc(it.text || '')}</div>
+                            <div class="when">${esc(it.ts || '')}</div>
+                        </div>
+                    `).join('');
+                    return;
+                }
+
+                this.innerHTML = this._rows.map((it) => `
+                    <div class="row">
+                        <div>${agentBadge(it.agent, true)} · ${esc(it.actor || 'unknown')}</div>
+                        <div>${esc(it.text || '')}</div>
+                        <div class="when">${esc(it.ts || '')}</div>
+                    </div>
+                `).join('');
+            }
+        }
+
+        if (!customElements.get('openclaw-kpi-card')) {
+            customElements.define('openclaw-kpi-card', OpenClawKpiCard);
+        }
+        if (!customElements.get('openclaw-stream-list')) {
+            customElements.define('openclaw-stream-list', OpenClawStreamList);
         }
 
         function formatTokenCompact(value) {
@@ -1707,14 +1813,18 @@
         async function openDrilldown(agentName) {
             store.selectedAgent = agentName;
             store.nodeDetails = null;
+            const requestSeq = (store.drilldownRequestSeq || 0) + 1;
+            store.drilldownRequestSeq = requestSeq;
             try {
                 const response = await fetch(`/drilldown/${encodeURIComponent(agentName)}`);
+                if (requestSeq !== store.drilldownRequestSeq) return;
                 if (!response.ok) {
                     store.drilldown = null;
                     scheduleRender({ drilldown: true, refresh: true });
                     return;
                 }
                 store.drilldown = await response.json();
+                if (requestSeq !== store.drilldownRequestSeq) return;
                 scheduleRender({ drilldown: true, refresh: true });
             } catch (error) {
                 console.error('drilldown error', error);
@@ -1819,12 +1929,6 @@
             ].join('|');
         }
 
-        function htmlToElement(html) {
-            const template = document.createElement('template');
-            template.innerHTML = String(html || '').trim();
-            return template.content.firstElementChild;
-        }
-
         function renderAgents() {
             const grid = document.getElementById('agent-grid');
             const rows = Array.from(store.agents.values()).sort((a, b) => String(a.agent).localeCompare(String(b.agent)));
@@ -1833,7 +1937,7 @@
                 grid.innerHTML = '<div class="row">Waiting for agent data...</div>';
                 renderState.agentSignatures.clear();
                 renderTelemetryCheck(rows);
-                document.getElementById('kpi-agents').textContent = '0';
+                setKpiValue('agents', 0);
                 return;
             }
 
@@ -1870,7 +1974,7 @@
 
             if (rows.length) renderAgentTelemetryCharts(rows);
             renderTelemetryCheck(rows);
-            document.getElementById('kpi-agents').textContent = String(rows.length);
+            setKpiValue('agents', rows.length);
             const hint = document.getElementById('selection-hint');
             if (!store.selectedAgent) {
                 hint.textContent = '1) Select an agent to unlock deep investigation and causal graph analysis.';
@@ -1892,24 +1996,13 @@
             if (signature === renderState.interactionsSignature) return;
             renderState.interactionsSignature = signature;
 
-            document.getElementById('kpi-ua').textContent = String(ua.length);
-            document.getElementById('kpi-aa').textContent = String(aa.length);
+            setKpiValue('ua', ua.length);
+            setKpiValue('aa', aa.length);
 
-            document.getElementById('user-agent-list').innerHTML = ua.length ? ua.map((it) => `
-                <div class="row">
-                    <div>${agentBadge(it.agent, true)} · ${esc(it.actor || 'unknown')}</div>
-                    <div>${esc(it.text || '')}</div>
-                    <div class="when">${esc(it.ts || '')}</div>
-                </div>
-            `).join('') : '<div class="row">No user/agent interactions detected.</div>';
-
-            document.getElementById('agent-agent-list').innerHTML = aa.length ? aa.map((it) => `
-                <div class="row">
-                    <div>${agentBadge(it.source, true)} → ${agentBadge(it.target, true)}</div>
-                    <div>${esc(it.text || '')}</div>
-                    <div class="when">${esc(it.ts || '')}</div>
-                </div>
-            `).join('') : '<div class="row">No agent/agent interactions detected.</div>';
+            const uaList = document.getElementById('user-agent-list');
+            const aaList = document.getElementById('agent-agent-list');
+            if (uaList && typeof uaList.setRows === 'function') uaList.setRows(ua);
+            if (aaList && typeof aaList.setRows === 'function') aaList.setRows(aa);
         }
 
         function renderDrilldown() {
@@ -2308,8 +2401,8 @@
             if (signature === renderState.kpiSignature) return;
             renderState.kpiSignature = signature;
 
-            document.getElementById('kpi-bad').textContent = String(interrupted);
-            document.getElementById('kpi-cron').textContent = String(store.insights?.cron?.summary?.active_jobs ?? 0);
+            setKpiValue('bad', interrupted);
+            setKpiValue('cron', store.insights?.cron?.summary?.active_jobs ?? 0);
         }
 
         function render() {
@@ -2372,6 +2465,11 @@
         }
 
         async function refreshInsights() {
+            if (store.refreshInFlight) {
+                store.refreshQueued = true;
+                return;
+            }
+            store.refreshInFlight = true;
             try {
                 const response = await fetch('/insights');
                 if (!response.ok) return;
@@ -2399,6 +2497,12 @@
                 });
             } catch (error) {
                 console.error('insights error', error);
+            } finally {
+                store.refreshInFlight = false;
+                if (store.refreshQueued) {
+                    store.refreshQueued = false;
+                    requestAnimationFrame(() => refreshInsights());
+                }
             }
         }
 
