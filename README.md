@@ -1,14 +1,34 @@
-# OpenClaw Swarm Observatory
+<div align="center" style="margin-bottom: 30px;">
+    <img src="./static/logo-oso-light.svg" alt="OpenClaw Swarm Observatory" style="width: 500px; max-width:500px;" />
+</div>
 
-[![Tests](https://github.com/virgolamobile/openclaw-swarm-observatory/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/virgolamobile/openclaw-swarm-observatory/actions/workflows/tests.yml)
+<h1 align="center">OpenClaw Swarm Observatory</h1>
+
+<p align="center">
+<a href="https://github.com/virgolamobile/openclaw-swarm-observatory/actions"><img src="https://github.com/virgolamobile/openclaw-swarm-observatory/actions/workflows/tests.yml/badge.svg?branch=main" alt="Build Status"></a>
+</p>
+
+## About
 
 This project is a real-time dashboard for observing OpenClaw agent swarms. It supports inspection of current state, decision causes, and document-level provenance.
 
-![OpenClaw Swarm Observatory](screenshot.png)
-
-## What this is
-
 OpenClaw Swarm Observatory is a passive observability layer for OpenClaw systems. It aggregates telemetry, timelines, and documentation context so behavior can be inspected without changing agent logic.
+
+## Table of contents
+
+- [About](#about)
+- [Table of contents](#table-of-contents)
+- [Usage flow](#usage-flow)
+- [Core capabilities](#core-capabilities)
+- [Architecture in one minute](#architecture-in-one-minute)
+- [Quick start](#quick-start)
+- [API snapshot](#api-snapshot)
+- [Runtime configuration](#runtime-configuration)
+- [Testing](#testing)
+- [MCP](#mcp)
+- [Author](#author)
+- [Community and licensing](#community-and-licensing)
+
 
 ## Usage flow
 
@@ -22,6 +42,8 @@ Start from the global view, move to a single agent, then inspect one decision no
 - Deep node inspection at `/drilldown/<agent>/node/<nodeId>`
 - Cron timeline with schedule, outcomes, durations, and summaries
 - Dynamic markdown context-root discovery (no brittle hardcoded file names)
+
+![OpenClaw Swarm Observatory Preview](screenshot.png)
 
 ## Architecture in one minute
 
@@ -70,12 +92,6 @@ gunicorn --preload -k eventlet -w 1 -b 0.0.0.0:5050 app:app
 ```bash
 ./venv/bin/python -m pytest -q
 ```
-
-## Documentation
-
-- `README.md` for setup and quick orientation
-- `docs/` for versioned technical documentation
-- GitHub Wiki for operational playbooks and walkthroughs
 
 ## MCP
 

@@ -9,7 +9,7 @@
   "theme_color": "#0b1020",
   "icons": [
     {
-      "src": "/static/favicon.svg",
+      "src": "/static/logo-oso-light.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any maskable"

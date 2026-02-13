@@ -16,8 +16,8 @@
     <meta name="organization" content="encom.io">
     <meta name="project-url" content="https://github.com/virgolamobile/openclaw-swarm-observatory/tree/main">
     <link rel="manifest" href="/static/manifest.webmanifest">
-    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
-    <link rel="apple-touch-icon" href="/static/favicon.svg">
+    <link rel="icon" type="image/svg+xml" href="/static/logo-oso-light.svg">
+    <link rel="apple-touch-icon" href="/static/logo-oso-light.svg">
     <title>OpenClaw Swarm Observatory</title>
     <script src="/static/vendor/socket.io/socket.io.min.js"></script>
     <link rel="stylesheet" href="/static/vendor/highlightjs/github-dark.min.css">
@@ -75,27 +75,12 @@
         .brand-wrap {
             display: inline-flex;
             align-items: center;
-            gap: 10px;
+            gap: 8px;
         }
-        .brand-mark {
-            width: 36px;
-            height: 36px;
-            color: #dbe7ff;
+        .brand-logo {
+            height: 34px;
+            width: auto;
             flex: 0 0 auto;
-        }
-        .brand-stack {
-            display: inline-flex;
-            flex-direction: column;
-            line-height: 1;
-            gap: 2px;
-            letter-spacing: .8px;
-            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-            font-size: .72rem;
-            text-transform: uppercase;
-        }
-        .brand-stack strong {
-            font-weight: 700;
-            color: #e8efff;
         }
         .meta { color: var(--muted); font-size: .85rem; }
         .meta-actions { display: flex; align-items: center; gap: 8px; }
@@ -1227,18 +1212,12 @@
         .site-footer-app {
             display: inline-flex;
             align-items: center;
-            gap: 6px;
-            color: #b9caf0;
-            letter-spacing: .35px;
-            text-transform: uppercase;
-            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-            font-size: .72rem;
+            justify-content: flex-end;
         }
-        .footer-mark {
-            width: 14px;
-            height: 14px;
-            color: #d4e2ff;
-            opacity: .92;
+        .footer-logo {
+            height: 18px;
+            width: auto;
+            opacity: .96;
             flex: 0 0 auto;
         }
     </style>
@@ -1247,8 +1226,7 @@
     <header>
         <div class="title-line">
             <h1 class="title-with-help"><span class="brand-wrap">
-                <svg class="brand-mark" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><circle cx="32" cy="32" r="28" stroke="currentColor" stroke-width="2"></circle><circle cx="32" cy="32" r="22" stroke="currentColor" stroke-width="1" opacity="0.3"></circle><line x1="32" y1="4" x2="32" y2="14" stroke="currentColor" stroke-width="2" opacity="0.8"></line><line x1="32" y1="50" x2="32" y2="60" stroke="currentColor" stroke-width="2" opacity="0.8"></line><line x1="4" y1="32" x2="14" y2="32" stroke="currentColor" stroke-width="2" opacity="0.8"></line><line x1="50" y1="32" x2="60" y2="32" stroke="currentColor" stroke-width="2" opacity="0.8"></line><circle cx="32" cy="28" r="4.2" fill="currentColor"></circle><circle cx="26" cy="34" r="3.5" fill="currentColor" opacity="0.88"></circle><circle cx="38" cy="33" r="2.9" fill="currentColor" opacity="0.74"></circle><circle cx="30" cy="40" r="2.3" fill="currentColor" opacity="0.6"></circle><circle cx="37" cy="24" r="2.2" fill="currentColor" opacity="0.55"></circle><circle cx="24" cy="27" r="1.4" fill="currentColor" opacity="0.45"></circle><circle cx="40" cy="39" r="1.3" fill="currentColor" opacity="0.4"></circle><circle cx="34" cy="37" r="1.1" fill="currentColor" opacity="0.35"></circle></svg>
-                <span class="brand-stack"><strong>SWARM</strong><strong>OBSERVATORY</strong></span>
+                <img class="brand-logo" src="/static/logo-oso-light.svg" alt="OpenClaw Swarm Observatory">
             </span>
             </h1>
             <div class="meta-actions">
@@ -1323,7 +1301,7 @@
     <footer class="site-footer" role="contentinfo" aria-label="Copyright and credits">
         <div class="site-footer-inner">
             <div class="site-footer-copyright">© <span id="footer-year"></span> Niccolò Zamborlini · encom.io · <a class="site-footer-link" href="https://github.com/virgolamobile" target="_blank" rel="noopener noreferrer">github.com/virgolamobile</a></div>
-            <div class="site-footer-app"><svg class="footer-mark" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><circle cx="32" cy="32" r="28" stroke="currentColor" stroke-width="2"></circle><circle cx="32" cy="32" r="22" stroke="currentColor" stroke-width="1" opacity="0.35"></circle><circle cx="32" cy="29" r="4" fill="currentColor"></circle><circle cx="26" cy="35" r="3.2" fill="currentColor" opacity="0.82"></circle><circle cx="38" cy="34" r="2.6" fill="currentColor" opacity="0.68"></circle></svg>OpenClaw Swarm Observatory</div>
+            <div class="site-footer-app"><img class="footer-logo" src="/static/logo-oso-light.svg" alt="OpenClaw Swarm Observatory"></div>
         </div>
     </footer>
 
