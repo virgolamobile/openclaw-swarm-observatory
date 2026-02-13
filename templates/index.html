@@ -1196,6 +1196,25 @@
             .trace { max-height: 52vh; }
             .overview-grid { grid-template-columns: 1fr; }
         }
+
+        .site-footer {
+            border-top: 1px solid var(--border);
+            background: rgba(11, 16, 32, 0.92);
+            padding: 12px 16px 14px;
+        }
+        .site-footer-inner {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            flex-wrap: wrap;
+            color: var(--muted);
+            font-size: .76rem;
+            line-height: 1.5;
+        }
+        .site-footer-copyright {
+            color: #d4e2ff;
+            letter-spacing: .15px;
+        }
     </style>
 </head>
 <body>
@@ -1274,6 +1293,13 @@
             <div id="drill-body" class="trace">Click an agent to open decision core analysis.</div>
         </section>
     </main>
+
+    <footer class="site-footer" role="contentinfo" aria-label="Copyright and credits">
+        <div class="site-footer-inner">
+            <div class="site-footer-copyright">© <span id="footer-year"></span> Niccolò Zamborlini · encom.io · OpenClaw Swarm Observatory</div>
+            <div class="meta">Official branding and product identity.</div>
+        </div>
+    </footer>
 
     <div id="docs-modal" class="docs-modal" aria-hidden="true">
         <div class="docs-card" role="dialog" aria-modal="true" aria-label="Documentation">
@@ -3462,6 +3488,10 @@
             document.addEventListener('dragstart', (event) => {
                 event.preventDefault();
             });
+            const footerYear = document.getElementById('footer-year');
+            if (footerYear) {
+                footerYear.textContent = String(new Date().getFullYear());
+            }
             await registerServiceWorker();
             document.querySelectorAll('.tab').forEach((node) => {
                 node.addEventListener('click', () => setTab(node.dataset.tab));
